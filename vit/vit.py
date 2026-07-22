@@ -1,6 +1,5 @@
 import torch.nn as nn
 import torch
-import numpy as np
 from einops import rearrange
 
 
@@ -9,27 +8,25 @@ class PositionalEmbeddings(nn.Module):
         super().__init__()
 
         self.model_dim = model_dim
-        self.dim_subset = torch.arange(model_dim // 2, dtype=torch.float32).reshape(1,-1)
         self.base = float(base)
 
-        self.register_buffer("dim_subset", self.dim_subset)
+        # 1 / base^(2i/d), precomputed once
+        dim_subset = torch.arange(model_dim // 2, dtype=torch.float32)
+        inv_freq = 1.0 / (self.base ** (2 * dim_subset / self.model_dim))
+        self.register_buffer("inv_freq", inv_freq)
 
-    def forward(self, positions: torch.Tensor) -> torch.Tensor: 
-        # check the shape of positions
-        if positions.dim() == 1:
-            positions = positions.unsqueeze(-1)
-        assert positions.shape[-1] == 1
 
-        pos_sin = torch.sin(positions/(self.base**(2*self.dim_subset/self.model_dim)))
-        pos_cos = torch.cos(positions/(self.base**(2*self.dim_subset/self.model_dim)))
+    def forward(self, positions: torch.Tensor) -> torch.Tensor:
+        # positions: (...,) -> angles: (..., model_dim // 2)
+        angles = positions.float().unsqueeze(-1) * self.inv_freq
 
-        embedding = torch.empty((len(positions), self.model_dim))
-        embedding[:, 0::2] = pos_sin
-        embedding[:, 1::2] = pos_cos
-        return embedding
+        # interleave sin/cos -> (..., model_dim)
+        embedding = torch.stack((
+            torch.sin(angles), torch.cos(angles)), dim=-1)
+        return embedding.flatten(-2)
 
 class PatchEmbedding(nn.Module):
-    def __init__(self, patch_size, image_size, emb_dim):
+    def __init__(self, patch_size, image_size, emb_dim, in_channels: int = 3):
         super().__init__()
         self.patch_size = patch_size
         self.image_size = image_size
@@ -39,7 +36,7 @@ class PatchEmbedding(nn.Module):
         self.n_patches = patch_per_side ** 2
 
         self.emb_dim = emb_dim
-        self.projector = nn.Conv2d(3, self.emb_dim, self.patch_size, stride=self.patch_size, bias=False)
+        self.projector = nn.Conv2d(in_channels, self.emb_dim, self.patch_size, stride=self.patch_size, bias=False)
 
     def forward(self, image):
         emb = self.projector(image)
