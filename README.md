@@ -1,3 +1,5 @@
 # simple_ml
 
-This repository contains simplified versions of common ml methods.
+This is a collection of various DL methods for image generation trained on very simple datasets and with small model sizes. 
+
+The goal of this repo is reimplementing existing ideas and understading them better!
