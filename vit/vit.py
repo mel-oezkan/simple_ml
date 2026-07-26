@@ -6,19 +6,23 @@ import math
 class PositionalEmbeddings(nn.Module):
     def __init__(self, model_dim, base: int = 10_000):
         super().__init__()
+        assert model_dim % 2 == 0, "model_dim needs to be even"
 
         self.model_dim = model_dim
         self.base = float(base)
 
         # 1 / base^(2i/d), precomputed once
-        dim_subset = torch.arange(model_dim // 2, dtype=torch.float32)
-        inv_freq = 1.0 / (self.base ** (2 * dim_subset / self.model_dim))
+        dim_subset = torch.arange(0, model_dim, 2, dtype=torch.float32)
+        inv_freq = 1.0 / (self.base ** (dim_subset / self.model_dim))
         self.register_buffer("inv_freq", inv_freq)
 
 
-    def forward(self, positions: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # positions: (...,) -> angles: (..., model_dim // 2)
-        angles = positions.float().unsqueeze(-1) * self.inv_freq
+        seq_len = x.shape[-2]
+
+        positions = torch.arange(0, seq_len, dtype=torch.float32, device=x.device).unsqueeze(-1)
+        angles = positions * self.inv_freq
 
         # interleave sin/cos -> (..., model_dim)
         embedding = torch.stack((
