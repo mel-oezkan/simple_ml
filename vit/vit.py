@@ -45,7 +45,7 @@ class ViT(nn.Module):
         nn.init.trunc_normal_(self.cls_token, std=0.02)
 
     def forward(self, image):
-        x = self.pos_emb(image)
+        x = self.patch_emb(image)
         _batch_size = x.shape[0]
 
         # add the cls token to the sequence
