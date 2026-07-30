@@ -3,7 +3,7 @@ import torch
 from einops import rearrange
 import math
 
-from vit.general import MultiHeadAttention, PatchEmbedding, PositionalEmbeddings
+from vit.general import MultiHeadAttention, PatchEmbedding, PositionEmbedding
 
 
 class ViT_Block(nn.Module):
@@ -35,7 +35,7 @@ class ViT(nn.Module):
     def __init__(self, emb_dim, heads, blocks, num_classes, patch_size=32, image_size=64):
         super().__init__()
 
-        self.pos_emb = PositionalEmbeddings(emb_dim)
+        self.pos_emb = PositionEmbedding(emb_dim)
         self.patch_emb = PatchEmbedding(patch_size, image_size, emb_dim)
 
         self.cls_token = nn.Parameter(torch.zeros(1,1,emb_dim))
