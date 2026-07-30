@@ -20,11 +20,11 @@ class SinusoidalEmbedding(nn.Module):
 
 
     def forward(self, positions: torch.Tensor) -> torch.Tensor:
+        # positions: (..., 1) -> angles: (..., model_dim // 2)
         angles = positions * self.inv_freq
 
-        # interleave sin/cos -> (..., model_dim)
-        embedding = torch.cat((torch.sin(angles), torch.cos(angles)), dim=-1)
-        return embedding.flatten(-2)
+        # concat sin/cos -> (..., model_dim)
+        return torch.cat((torch.sin(angles), torch.cos(angles)), dim=-1)
 
 
 class PositionEmbedding(SinusoidalEmbedding):
