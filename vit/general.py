@@ -5,7 +5,7 @@ from einops import rearrange
 import math
 
 
-class PositionalEmbeddings(nn.Module):
+class SinusoidalEmbedding(nn.Module):
     def __init__(self, model_dim, base: int = 10_000):
         super().__init__()
         assert model_dim % 2 == 0, "model_dim needs to be even"
@@ -18,19 +18,37 @@ class PositionalEmbeddings(nn.Module):
         inv_freq = 1.0 / (self.base ** (dim_subset / self.model_dim))
         self.register_buffer("inv_freq", inv_freq)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # positions: (...,) -> angles: (..., model_dim // 2)
-        seq_len = x.shape[-2]
 
-        positions = torch.arange(
-            0, seq_len, dtype=torch.float32, device=x.device
-        ).unsqueeze(-1)
+    def forward(self, positions: torch.Tensor) -> torch.Tensor:
         angles = positions * self.inv_freq
 
         # interleave sin/cos -> (..., model_dim)
         embedding = torch.stack((torch.sin(angles), torch.cos(angles)), dim=-1)
         return embedding.flatten(-2)
 
+
+class PositionEmbedding(SinusoidalEmbedding):
+    def __init__(self, model_dim):
+        super().__init__(model_dim)
+
+    def forward(self, x):
+        # positions: (...,) -> angles: (..., model_dim // 2)
+        seq_len = x.shape[-2]
+
+        positions = torch.arange(
+            0, seq_len, dtype=torch.float32, device=x.device
+        ).unsqueeze(-1)
+
+        return super().forward(positions)
+
+class TimestepEmbedding(SinusoidalEmbedding):
+    def __init__(self, model_dim, base = 10000):
+        super().__init__(model_dim, base)
+
+    def forward(self, timestep):
+        # timestep: (B)
+        timestep = timestep.unsqueeze(-1).float()
+        return super().forward(timestep)
 
 class PatchEmbedding(nn.Module):
     def __init__(self, patch_size, image_size, emb_dim, in_channels: int = 3):
