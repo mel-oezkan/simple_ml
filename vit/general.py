@@ -23,7 +23,7 @@ class SinusoidalEmbedding(nn.Module):
         angles = positions * self.inv_freq
 
         # interleave sin/cos -> (..., model_dim)
-        embedding = torch.stack((torch.sin(angles), torch.cos(angles)), dim=-1)
+        embedding = torch.cat((torch.sin(angles), torch.cos(angles)), dim=-1)
         return embedding.flatten(-2)
 
 
@@ -42,13 +42,21 @@ class PositionEmbedding(SinusoidalEmbedding):
         return super().forward(positions)
 
 class TimestepEmbedding(SinusoidalEmbedding):
-    def __init__(self, model_dim, base = 10000):
+    def __init__(self, model_dim, frequency_dim, base = 10000):
         super().__init__(model_dim, base)
+
+        self.mlp = nn.Sequential(
+            nn.Linear(frequency_dim, model_dim),
+            nn.SiLU(),
+            nn.Linear(model_dim, model_dim)
+        )
 
     def forward(self, timestep):
         # timestep: (B)
         timestep = timestep.unsqueeze(-1).float()
-        return super().forward(timestep)
+        freq_emb = super().forward(timestep)  # (B, model_dim)
+
+        return self.mlp(freq_emb)  # (B, model_dim)
 
 class PatchEmbedding(nn.Module):
     def __init__(self, patch_size, image_size, emb_dim, in_channels: int = 3):
