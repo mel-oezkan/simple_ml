@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
 
-from vit.general import MultiHeadAttention, PatchEmbedding, TimestepEmbedding
+from einops import rearrange
+
+from vit.general import MultiHeadAttention, PatchEmbedding, TimestepEmbedding, PositionEmbedding
 
 
 class DiT_Block(nn.Module):
@@ -20,7 +22,7 @@ class DiT_Block(nn.Module):
         scaled_dim = emb_dim * mlp_scalar
         self.mlp = nn.Sequential(
             nn.Linear(emb_dim, scaled_dim), 
-            nn.SiLU(), 
+            nn.GELU(approximate='tanh'), 
             nn.Linear(scaled_dim, emb_dim)
         )
 
@@ -32,36 +34,78 @@ class DiT_Block(nn.Module):
 
         path1 = self.norm1(x) * (1 + gam1) + bet1
         path1 = self.mha(path1)
-        path1 = path1 + alp1.unsqueeze(1)
+        path1 = path1 * alp1
 
         x = x + path1
 
         path2 = self.norm2(x) * (1 + gam2) + bet2
         path2 = self.mlp(path2)
-        path2 = path2 + alp2.unsqueeze(1)
+        path2 = path2 * alp2
 
         x = x + path2
 
-        return x
+        return x # (B, N, emb_dim)
+
+class DIT_Final(nn.Module):
+    def __init__(self, emb_dim, patch_size, image_size, out_channels=3):
+        super().__init__()
+        self.image_size = image_size
+        self.patch_size = patch_size
+        self.out_channels = out_channels
+
+        self.ln = nn.LayerNorm(emb_dim, elementwise_affine=False)
+
+        self.modulation = nn.Linear(emb_dim, emb_dim * 2)
+        nn.init.zeros_(self.modulation.weight)
+        nn.init.zeros_(self.modulation.bias)
+
+        self.out_head = nn.Linear(emb_dim, patch_size * patch_size * out_channels)
+        nn.init.zeros_(self.out_head.weight)
+        nn.init.zeros_(self.out_head.bias)
+
+    def forward(self, latent, cond):
+        # latent: (B, N, emb_dim), cond: (B, emb_dim)
+        scale, shift = torch.chunk(self.modulation(cond).unsqueeze(1), 2, dim=-1)
+
+        out = self.ln(latent) * (1 + scale) + shift
+        out = self.out_head(out)
+
+        out = rearrange(out, "b (h w) (c p1 p2) -> b c (h p1) (w p2)",
+            h = self.image_size // self.patch_size,
+            w = self.image_size // self.patch_size,
+            c=self.out_channels,
+            p1=self.patch_size,
+            p2=self.patch_size
+        )
+
+        return out
 
 
 class DiT(nn.Module):
     def __init__(self, n_blocks, emb_dim, patch_size, image_size, out_channels=3, emb_scalara=4):
         super().__init__()
+        self.image_size = image_size
+        self.patch_size = patch_size
+        self.out_channels = out_channels
 
-        self.patch_emb = PatchEmbedding(patch_size, image_size)
-        self.time_emb = TimestepEmbedding(emb_dim)
+        self.patch_emb = PatchEmbedding(patch_size, image_size, emb_dim)
+        self.pos_emb = PositionEmbedding(emb_dim)
+        self.time_emb = TimestepEmbedding(emb_dim, frequency_dim=emb_dim)
 
-        hidden_dim = emb_dim * emb_scalara
-        self.mlp = nn.Sequential(
-            nn.Linear(emb_dim, hidden_dim),
-            nn.SiLU(),
-            nn.Linear(hidden_dim, emb_dim)
-        )
+        self.forward_blocks = nn.ModuleList(
+            [DiT_Block(emb_dim, mlp_scalar=emb_scalara) for _ in range(n_blocks)]
+        )        
 
-        self.ln = nn.LayerNorm(emb_dim)
-        self.out_head = nn.Linear(emb_dim, patch_size * patch_size * out_channels)
+        self.final = DIT_Final(emb_dim, patch_size, image_size, out_channels)
 
-        
-    def forward(self, x, cond):
-        pass
+
+    def forward(self, latent, cond):
+
+        cond_emb = self.time_emb(cond)
+        latent_emb = self.patch_emb(latent)
+        latent_emb = latent_emb + self.pos_emb(latent_emb)
+
+        for block in self.forward_blocks:
+            latent_emb = block(latent_emb, cond_emb)
+
+        return self.final(latent_emb, cond_emb)  # (B, C, H, W)
