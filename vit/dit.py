@@ -7,7 +7,7 @@ from vit.general import MultiHeadAttention, PatchEmbedding, TimestepEmbedding, P
 
 
 class DiT_Block(nn.Module):
-    def __init__(self, emb_dim, attn_heads=5, mlp_scalar=4):
+    def __init__(self, emb_dim, attn_heads=4, mlp_scalar=4):
         super().__init__()
 
         self.conditions = nn.Linear(emb_dim, emb_dim * 6)
@@ -28,7 +28,7 @@ class DiT_Block(nn.Module):
 
     def forward(self, x, cond):
         # cond: (B, emb_dim)
-        alp1, bet1, gam1, alp2, bet2, gam2 = torch.chunk(
+        gam1, bet1, alp1, gam2, bet2, alp2 = torch.chunk(
             self.conditions(cond).unsqueeze(1), 6, dim=-1
         )
 
@@ -82,10 +82,25 @@ class DIT_Final(nn.Module):
 
 
 class DiT(nn.Module):
-    def __init__(self, n_blocks, emb_dim, patch_size, image_size, out_channels=3, emb_scalara=4):
+    def __init__(
+        self, 
+        n_blocks, 
+        emb_dim, 
+        patch_size, 
+        image_size, 
+        out_channels=3, 
+        mlp_scalar=4,
+        constant_sigma=True,
+        frequency_dim=256,
+    ):
         super().__init__()
         self.image_size = image_size
         self.patch_size = patch_size
+
+        self.constant_sigma = constant_sigma
+        if not constant_sigma:
+            out_channels = out_channels * 2
+
         self.out_channels = out_channels
 
         self.patch_emb = PatchEmbedding(patch_size, image_size, emb_dim)
@@ -93,7 +108,7 @@ class DiT(nn.Module):
         self.time_emb = TimestepEmbedding(emb_dim, frequency_dim=emb_dim)
 
         self.forward_blocks = nn.ModuleList(
-            [DiT_Block(emb_dim, mlp_scalar=emb_scalara) for _ in range(n_blocks)]
+            [DiT_Block(emb_dim, mlp_scalar=mlp_scalar) for _ in range(n_blocks)]
         )        
 
         self.final = DIT_Final(emb_dim, patch_size, image_size, out_channels)
@@ -108,4 +123,10 @@ class DiT(nn.Module):
         for block in self.forward_blocks:
             latent_emb = block(latent_emb, cond_emb)
 
-        return self.final(latent_emb, cond_emb)  # (B, C, H, W)
+        out = self.final(latent_emb, cond_emb)
+        if self.constant_sigma:
+            # out: (B, C, H, W)
+            return out
+
+        # out: (B, C*2, H, W) learnes the sigma
+        return torch.chunk(out, 2, dim=1) # out, sig
