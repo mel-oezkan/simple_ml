@@ -28,8 +28,8 @@ class SinusoidalEmbedding(nn.Module):
 
 
 class PositionEmbedding(SinusoidalEmbedding):
-    def __init__(self, model_dim):
-        super().__init__(model_dim)
+    def __init__(self, model_dim, base: int = 10_000):
+        super().__init__(model_dim, base)
 
     def forward(self, x):
         # positions: (...,) -> angles: (..., model_dim // 2)
