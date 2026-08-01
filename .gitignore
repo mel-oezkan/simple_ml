@@ -3,3 +3,4 @@
 
 denoised_samples-*.png
 data/
+runs/
