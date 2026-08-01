@@ -81,8 +81,6 @@ class Diffusion(nn.Module):
             device (torch.device): Device to run the sampling on.
             y (torch.Tensor, optional): Class labels for conditional sampling.
         """
-        device = device or next(self.parameters()).device
-
         x_T = torch.randn(
             n, self.out_channels, self.image_size, self.image_size, device=device
         )
@@ -117,12 +115,13 @@ class Diffusion(nn.Module):
 
         return x_curr
 
-    def forward(self, x_0: torch.Tensor, noise: torch.Tensor):
+    def forward(self, x_0: torch.Tensor, noise: torch.Tensor, y: torch.Tensor = None) -> torch.Tensor:
         """Training step for the diffions model.
 
         Args:
             x_0 (torch.Tensor): clean latent/image
             noise (torch.Tensor): Noise/eps naming was selected for simplicity
+            y (torch.Tensor, optional): Class labels for conditional training.
 
         Returns:
             torch.Tensor: predicted noise
@@ -134,4 +133,4 @@ class Diffusion(nn.Module):
 
         x_t = u * x_0 + v * noise
 
-        return self.diff_model(x_t, t)
+        return self.diff_model(x_t, t, y)
