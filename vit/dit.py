@@ -125,23 +125,33 @@ class DiT(nn.Module):
         self.final = DIT_Final(emb_dim, patch_size, image_size, out_channels)
 
 
-    def forward(self, latent, t, class_labels=None):
+    def forward(self, latent, t, y=None):
 
         if self.n_classes is not None:
-            if self.training and self.class_dropout > 0:
-                drop_prob = torch.rand(
-                    class_labels.shape, 
-                    device=class_labels.device
+            if y is None:
+                y = torch.full(
+                    (latent.shape[0],),
+                    self.n_classes,  # null token
+                    device=latent.device,
+                    dtype=torch.long
                 )
 
-                class_labels = torch.where(
+
+            if self.training and self.class_dropout > 0:
+                drop_prob = torch.rand(
+                    y.shape, 
+                    device=y.device
+                )
+
+                y = torch.where(
                     drop_prob < self.class_dropout, 
                     self.n_classes, # sets index to null token
-                    class_labels    # keeps the original class label
+                    y    # keeps the original class label
                 )
 
         cond_emb = self.time_emb(t)
-        cond_emb = cond_emb + self.label_emb(class_labels)
+        if self.n_classes is not None:
+            cond_emb = cond_emb + self.label_emb(y)
 
         latent_emb = self.patch_emb(latent)
         latent_emb = latent_emb + self.pos_emb(latent_emb)
