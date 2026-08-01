@@ -88,10 +88,13 @@ class DiT(nn.Module):
         emb_dim, 
         patch_size, 
         image_size, 
+        n_classes = None,
+        class_dropout = 0.1,
         out_channels=3, 
         mlp_scalar=4,
         constant_sigma=True,
         frequency_dim=256,
+
     ):
         super().__init__()
         self.image_size = image_size
@@ -103,7 +106,15 @@ class DiT(nn.Module):
 
         self.out_channels = out_channels
 
-        self.patch_emb = PatchEmbedding(patch_size, image_size, emb_dim)
+        # create the class tokens for conditional diffusion
+        self.n_classes = n_classes
+        self.class_dropout = class_dropout
+        if n_classes is not None:
+            # +1 slot is the "null" class used for dropout / CFG
+            self.label_emb = nn.Embedding(n_classes + 1, emb_dim)
+            nn.init.normal_(self.label_emb.weight, std=0.02)
+
+        self.patch_emb = PatchEmbedding(patch_size, image_size, emb_dim, in_channels=out_channels)
         self.pos_emb = PositionEmbedding(emb_dim)
         self.time_emb = TimestepEmbedding(emb_dim, frequency_dim=emb_dim)
 
@@ -114,9 +125,24 @@ class DiT(nn.Module):
         self.final = DIT_Final(emb_dim, patch_size, image_size, out_channels)
 
 
-    def forward(self, latent, cond):
+    def forward(self, latent, t, class_labels=None):
 
-        cond_emb = self.time_emb(cond)
+        if self.n_classes is not None:
+            if self.training and self.class_dropout > 0:
+                drop_prob = torch.rand(
+                    class_labels.shape, 
+                    device=class_labels.device
+                )
+
+                class_labels = torch.where(
+                    drop_prob < self.class_dropout, 
+                    self.n_classes, # sets index to null token
+                    class_labels    # keeps the original class label
+                )
+
+        cond_emb = self.time_emb(t)
+        cond_emb = cond_emb + self.label_emb(class_labels)
+
         latent_emb = self.patch_emb(latent)
         latent_emb = latent_emb + self.pos_emb(latent_emb)
 
