@@ -1,2 +1,5 @@
 */__pycache__
 *.ipynb
+
+denoised_samples-*.png
+data/
