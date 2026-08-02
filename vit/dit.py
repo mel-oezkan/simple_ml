@@ -95,7 +95,7 @@ class DiT(nn.Module):
         constant_sigma=True,
         frequency_dim=256,
         pos_emb="sinusoidal_1d",
-
+        attn_heads=4
     ):
         super().__init__()
         self.image_size = image_size
@@ -120,7 +120,7 @@ class DiT(nn.Module):
         self.time_emb = TimestepEmbedding(emb_dim, frequency_dim=emb_dim)
 
         self.forward_blocks = nn.ModuleList(
-            [DiT_Block(emb_dim, mlp_scalar=mlp_scalar) for _ in range(n_blocks)]
+            [DiT_Block(emb_dim, mlp_scalar=mlp_scalar, attn_heads=attn_heads) for _ in range(n_blocks)]
         )        
 
         self.final = DIT_Final(emb_dim, patch_size, image_size, out_channels)
@@ -136,7 +136,6 @@ class DiT(nn.Module):
                     device=latent.device,
                     dtype=torch.long
                 )
-
 
             if self.training and self.class_dropout > 0:
                 drop_prob = torch.rand(
