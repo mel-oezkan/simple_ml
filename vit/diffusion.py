@@ -44,6 +44,7 @@ class Diffusion(nn.Module):
         mlp_scalar=4,
         T=1000,
         pos_emb="sinusoidal_1d",
+        attn_heads=4,
     ):
         super().__init__()
 
@@ -69,6 +70,7 @@ class Diffusion(nn.Module):
             out_channels=out_channels,
             mlp_scalar=mlp_scalar,
             pos_emb=pos_emb,
+            attn_heads=attn_heads,
         )
 
     def extract(self, buf, t):
