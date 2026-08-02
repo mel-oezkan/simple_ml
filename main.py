@@ -2,146 +2,159 @@ import json
 import uuid
 from pathlib import Path
 
+import hydra
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
-
+from omegaconf import DictConfig
 from torch.utils.data import DataLoader
-from tqdm import tqdm
-
 from torchvision import datasets
 from torchvision.transforms import v2
-
-import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 from vit.diffusion import Diffusion
 
 
-training_data = datasets.FashionMNIST(
-    root="data",
-    train=True,
-    download=True,
-    transform=v2.Compose(
-        [
-            v2.ToImage(),
-            v2.ToDtype(torch.float32, scale=True),
-            v2.Normalize((0.5,), (0.5,)),
-        ]
-    ),
-)
+def load_datasets():
+    """Helper function to load the FashionMNIST dataset."""
 
-test_data = datasets.FashionMNIST(
-    root="data",
-    train=False,
-    download=True,
-    transform=v2.Compose(
-        [
-            v2.ToImage(),
-            v2.ToDtype(torch.float32, scale=True),
-            v2.Normalize((0.5,), (0.5,)),
-        ]
-    ),
-)
+    training_data = datasets.FashionMNIST(
+        root="data",
+        train=True,
+        download=True,
+        transform=v2.Compose(
+            [
+                v2.ToImage(),
+                v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize((0.5,), (0.5,)),
+            ]
+        ),
+    )
 
+    test_data = datasets.FashionMNIST(
+        root="data",
+        train=False,
+        download=True,
+        transform=v2.Compose(
+            [
+                v2.ToImage(),
+                v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize((0.5,), (0.5,)),
+            ]
+        ),
+    )
 
-BATCH_SIZE = 512
-EPOCHS = 50
-LEARNING_RATE = 1e-4
-SAMPLE_EVERY = 5
-
-config = {
-    "batch_size": BATCH_SIZE,
-    "epochs": EPOCHS,
-    "learning_rate": LEARNING_RATE,
-    "sample_every": SAMPLE_EVERY,
-    "model": {
-        "n_blocks": 3,
-        "emb_dim": 128,
-        "patch_size": 1,
-        "image_size": 28,
-        "n_classes": 10,
-        "out_channels": 1,
-        "mlp_scalar": 4,
-        "T": 1000,
-    },
-}
-
-run_id = str(uuid.uuid4())
-run_dir = Path("runs") / run_id
-run_dir.mkdir(parents=True, exist_ok=True)
-print(f"Run ID: {run_id} (results in {run_dir})")
-
-train_loader = DataLoader(
-    training_data,
-    batch_size=BATCH_SIZE,
-    shuffle=True,
-    num_workers=4,
-    drop_last=True,
-)
-
-test_loader = DataLoader(
-    test_data,
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-    num_workers=4,
-)
-
-device = "cuda"
-config["device"] = device
-
-with open(run_dir / "config.json", "w") as f:
-    json.dump(config, f, indent=2)
-
-model = Diffusion(**config["model"]).to(device)
-model.diff_model = torch.compile(model.diff_model)
+    return training_data, test_data
 
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
+def prepare_dataloaders(cfg, train_ds, test_ds):
+    """Helper function to prepare the dataloaders for training and testing."""
 
-losses = []
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=cfg.batch_size,
+        shuffle=True,
+        num_workers=4,
+        drop_last=True,
+    )
 
-for epoch in range(EPOCHS):
-    epoch_losses = []
+    test_loader = DataLoader(
+        test_ds,
+        batch_size=cfg.batch_size,
+        shuffle=False,
+        num_workers=4,
+    )
 
-    for x, y in tqdm(train_loader, desc=f"Epoch {epoch + 1}", leave=False):
+    return train_loader, test_loader
+
+def run_train(model, dataloader, optimizer, criterion, device):
+    """Helper function to perform a single training step."""
+    model.train()
+    total_loss = 0
+    for x,y in tqdm(dataloader, desc="Training: ", leave=False):
         x, y = x.to(device), y.to(device)
-
         optimizer.zero_grad()
 
         noise = torch.randn_like(x)
         pred_noise = model(x, noise, y)
 
-        loss = nn.functional.mse_loss(pred_noise, noise)
-
+        loss = criterion(pred_noise, noise)
         loss.backward()
         optimizer.step()
 
-        epoch_losses.append(loss.item())
+        total_loss += loss.item()
 
-    mean_loss = sum(epoch_losses) / len(epoch_losses)
-    losses.append(
-        {
-            "epoch": epoch + 1,
-            "mean_loss": mean_loss,
-            "last_loss": epoch_losses[-1],
-        }
-    )
+    return total_loss / len(dataloader)
 
-    print(f"Epoch {epoch + 1}, Loss: {mean_loss}")
+def run_test(model, dataloader, criterion, device):
+    """Helper function to perform a single test step."""
+    model.eval()
+    total_loss = 0
+    with torch.no_grad():
+        for x, y in dataloader:
+            x, y = x.to(device), y.to(device)
+            noise = torch.randn_like(x)
+            pred_noise = model(x, noise, y)
 
-    # write after every epoch so a crashed run keeps its history
-    with open(run_dir / "losses.json", "w") as f:
-        json.dump(losses, f, indent=2)
+            loss = criterion(pred_noise, noise)
+            total_loss += loss.item()
 
-    if epoch % SAMPLE_EVERY == 0:
-        # show the reverse diffusion process for a sample image
-        labels = torch.tensor([3, 6, 9], dtype=torch.long, device=device)
-        denoised_sample = model.sample(n=3, device=torch.device("cuda"), y=labels)
+    return total_loss / len(dataloader)
 
-        plt.figure(figsize=(4 * 3, 4))
-        for i in range(3):
-            plt.subplot(1, 3, i + 1)
-            plt.imshow(denoised_sample[i].permute(1, 2, 0).cpu().detach().numpy())
-            plt.title(f"Label: {(i + 1 * 3)}")
-            plt.axis("off")
-        plt.savefig(run_dir / f"denoised_samples-{epoch + 1}.png")
-        plt.close()
+@hydra.main(version_base=None, config_path="conf", config_name="config")
+def main(cfg: DictConfig, run_dir: Path = Path("runs")):
+    train_data, test_data = load_datasets()
+    train_dataloader, test_dataloader = prepare_dataloaders(cfg, train_data, test_data)
+
+    device = "cuda"
+
+    model = Diffusion(**cfg["model"]).to(device)
+    model.diff_model = torch.compile(model.diff_model)
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
+
+    losses = []
+    criterion = nn.MSELoss()
+
+    for epoch in range(cfg.epochs):
+
+        mean_loss = run_train(model, train_dataloader, optimizer, criterion, device)
+        mean_test_loss = run_test(model, test_dataloader, criterion, device)
+
+        losses.append(
+            {
+                "epoch": epoch + 1,
+                "mean_loss": mean_loss,
+                "mean_test_loss": mean_test_loss,
+            }
+        )
+
+        print(f"Epoch {epoch + 1}, Loss: {mean_loss}, Test Loss: {mean_test_loss}")
+
+        # write after every epoch so a crashed run keeps its history
+        with open(run_dir / "losses.json", "w") as f:
+            json.dump(losses, f, indent=2)
+
+        if epoch % cfg.sample_every == 0:
+            # show the reverse diffusion process for a sample image
+            labels = torch.tensor([3, 6, 9], dtype=torch.long, device=device)
+            denoised_sample = model.sample(n=3, device=torch.device("cuda"), y=labels)
+
+            plt.figure(figsize=(4 * 3, 4))
+            for i in range(3):
+                plt.subplot(1, 3, i + 1)
+                plt.imshow(denoised_sample[i].permute(1, 2, 0).cpu().detach().numpy())
+                plt.title(f"Label: {(i + 1 * 3)}")
+                plt.axis("off")
+                
+            plt.savefig(run_dir / f"denoised_samples-{epoch + 1}.png")
+            plt.close()
+
+
+if __name__ == "__main__":
+    run_id = str(uuid.uuid4())
+    run_dir = Path("runs") / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Run ID: {run_id} (results in {run_dir})")
+
+    main(run_dir=run_dir)
