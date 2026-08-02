@@ -58,6 +58,32 @@ class TimestepEmbedding(SinusoidalEmbedding):
 
         return self.mlp(freq_emb)  # (B, model_dim)
 
+
+class PositionEmbedding2D(SinusoidalEmbedding):
+    def __init__(self, model_dim, base: int = 10_000):
+        assert model_dim % 4 == 0, "model_dim needs to be divisible by 4 for 2d embeddings"
+        super().__init__(model_dim, base)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Computes the 2d positional embeddings for the input tensor x.
+        Args:
+            x (torch.Tensor): Output of the patch embedding layer, shape (B, N, E)
+        Returns:
+            pos_emb (torch.Tensor): Positional embeddings, shape (B, N, E)
+        """
+        # determine the number of positions for each axis
+        n_ax_points = int(x.shape[1] * 0.5)
+        axis_positions = torch.arange(
+            0, n_ax_points, dtype=torch.float32, device=x.device
+        ).unsqueeze(-1) 
+
+        axis_emb = super().forward(axis_positions)  # (num_axis_points, model_dim // 2)
+
+        # adds a dimension and duplicates the embeddings for each axis (to match the size of the other axis)
+        rows = axis_emb.unsqueeze(1).expand(n_ax_points, n_ax_points, -1)  # (n_ax_points, n_ax_points, model_dim // 2)
+        cols = axis_emb.unsqueeze(0).expand(n_ax_points, n_ax_points, -1)  # (n_ax_points, n_ax_points, model_dim // 2)
+
+        return torch.cat((rows, cols), dim=-1).flatten(0, 1) # (N, model_dim)
 class PatchEmbedding(nn.Module):
     def __init__(self, patch_size, image_size, emb_dim, in_channels: int = 3):
         super().__init__()
