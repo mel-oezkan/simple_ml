@@ -101,12 +101,21 @@ def run_test(model, dataloader, criterion, device):
 
     return total_loss / len(dataloader)
 
-@hydra.main(version_base=None, config_path="conf", config_name="config")
-def main(cfg: DictConfig, run_dir: Path = Path("runs")):
+def train(cfg: DictConfig, run_dir: Path):
+    """Run the full training loop, writing artifacts into run_dir.
+
+    Kept free of hydra runtime state so it can be called from Modal too.
+    """
+    run_dir.mkdir(parents=True, exist_ok=True)
+
     train_data, test_data = load_datasets()
     train_dataloader, test_dataloader = prepare_dataloaders(cfg, train_data, test_data)
 
-    device = "cuda"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cuda":
+        # let matmuls use TF32 tensor cores; also unblocks inductor's
+        # fused flash-attention pattern match
+        torch.set_float32_matmul_precision("high")
 
     model = Diffusion(**cfg["model"]).to(device)
     model.diff_model = torch.compile(model.diff_model)
@@ -138,7 +147,7 @@ def main(cfg: DictConfig, run_dir: Path = Path("runs")):
         if epoch % cfg.sample_every == 0:
             # show the reverse diffusion process for a sample image
             labels = torch.tensor([3, 6, 9], dtype=torch.long, device=device)
-            denoised_sample = model.sample(n=3, device=torch.device("cuda"), y=labels)
+            denoised_sample = model.sample(n=3, device=torch.device(device), y=labels)
 
             plt.figure(figsize=(4 * 3, 4))
             for i in range(3):
@@ -151,10 +160,15 @@ def main(cfg: DictConfig, run_dir: Path = Path("runs")):
             plt.close()
 
 
-if __name__ == "__main__":
+@hydra.main(version_base=None, config_path="conf", config_name="config")
+def main(cfg: DictConfig):
+    # hydra calls main with the config only, so the run dir is built here
     run_id = str(uuid.uuid4())
-    run_dir = Path("runs") / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = Path(hydra.utils.get_original_cwd()) / "runs" / run_id
     print(f"Run ID: {run_id} (results in {run_dir})")
 
-    main(run_dir=run_dir)
+    train(cfg, run_dir)
+
+
+if __name__ == "__main__":
+    main()
