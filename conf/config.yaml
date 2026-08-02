@@ -12,3 +12,4 @@ model:
   out_channels: 1
   mlp_scalar: 4
   T: 1000
+  pos_emb: sinusoidal_1d #options: sinusoidal_1d, sinusoidal_2d

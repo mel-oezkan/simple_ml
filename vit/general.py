@@ -62,7 +62,8 @@ class TimestepEmbedding(SinusoidalEmbedding):
 class PositionEmbedding2D(SinusoidalEmbedding):
     def __init__(self, model_dim, base: int = 10_000):
         assert model_dim % 4 == 0, "model_dim needs to be divisible by 4 for 2d embeddings"
-        super().__init__(model_dim, base)
+        # each axis contributes half the channels, so the concat of both is model_dim
+        super().__init__(model_dim // 2, base)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Computes the 2d positional embeddings for the input tensor x.
@@ -71,8 +72,11 @@ class PositionEmbedding2D(SinusoidalEmbedding):
         Returns:
             pos_emb (torch.Tensor): Positional embeddings, shape (B, N, E)
         """
-        # determine the number of positions for each axis
-        n_ax_points = int(x.shape[1] * 0.5)
+        # the patches form a square grid, so each axis has sqrt(N) positions
+        n_ax_points = int(x.shape[1] ** 0.5)
+        assert n_ax_points**2 == x.shape[1], (
+            f"expected a square patch grid, got {x.shape[1]} patches"
+        )
         axis_positions = torch.arange(
             0, n_ax_points, dtype=torch.float32, device=x.device
         ).unsqueeze(-1) 
@@ -84,6 +88,24 @@ class PositionEmbedding2D(SinusoidalEmbedding):
         cols = axis_emb.unsqueeze(0).expand(n_ax_points, n_ax_points, -1)  # (n_ax_points, n_ax_points, model_dim // 2)
 
         return torch.cat((rows, cols), dim=-1).flatten(0, 1) # (N, model_dim)
+
+
+
+POS_EMBEDDINGS = {
+    "sinusoidal_1d": PositionEmbedding,
+    "sinusoidal_2d": PositionEmbedding2D,
+}
+
+
+def build_pos_embedding(name: str, model_dim: int, n_patches: int) -> nn.Module:
+    """Builds the positional embedding selected by `name` (see POS_EMBEDDINGS)."""
+    if name not in POS_EMBEDDINGS:
+        raise ValueError(
+            f"Unknown pos_emb '{name}', expected one of {list(POS_EMBEDDINGS)}"
+        )
+    return POS_EMBEDDINGS[name](model_dim)
+
+
 class PatchEmbedding(nn.Module):
     def __init__(self, patch_size, image_size, emb_dim, in_channels: int = 3):
         super().__init__()

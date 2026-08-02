@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from einops import rearrange
 
-from vit.general import MultiHeadAttention, PatchEmbedding, TimestepEmbedding, PositionEmbedding
+from vit.general import MultiHeadAttention, PatchEmbedding, TimestepEmbedding, build_pos_embedding
 
 
 class DiT_Block(nn.Module):
@@ -94,6 +94,7 @@ class DiT(nn.Module):
         mlp_scalar=4,
         constant_sigma=True,
         frequency_dim=256,
+        pos_emb="sinusoidal_1d",
 
     ):
         super().__init__()
@@ -115,7 +116,7 @@ class DiT(nn.Module):
             nn.init.normal_(self.label_emb.weight, std=0.02)
 
         self.patch_emb = PatchEmbedding(patch_size, image_size, emb_dim, in_channels=out_channels)
-        self.pos_emb = PositionEmbedding(emb_dim)
+        self.pos_emb = build_pos_embedding(pos_emb, emb_dim, self.patch_emb.n_patches)
         self.time_emb = TimestepEmbedding(emb_dim, frequency_dim=emb_dim)
 
         self.forward_blocks = nn.ModuleList(
@@ -154,7 +155,8 @@ class DiT(nn.Module):
             cond_emb = cond_emb + self.label_emb(y)
 
         latent_emb = self.patch_emb(latent)
-        latent_emb = latent_emb + self.pos_emb(latent_emb)
+        if self.pos_emb is not None:
+            latent_emb = latent_emb + self.pos_emb(latent_emb)
 
         for block in self.forward_blocks:
             latent_emb = block(latent_emb, cond_emb)
