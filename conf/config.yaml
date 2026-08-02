@@ -1,0 +1,14 @@
+batch_size: 512
+epochs: 50
+learning_rate: 0.0001
+sample_every: 5
+
+model: 
+  n_blocks: 3
+  emb_dim: 128
+  patch_size: 1
+  image_size: 28
+  n_classes: 10
+  out_channels: 1
+  mlp_scalar: 4
+  T: 1000
