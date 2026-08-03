@@ -1,4 +1,5 @@
 import json
+from typing import Callable
 import uuid
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from tqdm import tqdm
 
 from vit.diffusion import Diffusion
 from vit.ema import EMA
+from vit.model_utils import save_checkpoint
 
 
 def load_datasets(cfg):
@@ -34,10 +36,8 @@ def load_datasets(cfg):
 
     if cfg.debug.active and cfg.debug.debug_n:
         training_data = Subset(
-            training_data, 
-            range(max(cfg.debug.debug_n, cfg.batch_size))
+            training_data, range(max(cfg.debug.debug_n, cfg.batch_size))
         )
-
 
     test_data = datasets.FashionMNIST(
         root="data",
@@ -75,11 +75,12 @@ def prepare_dataloaders(cfg, train_ds, test_ds):
 
     return train_loader, test_loader
 
+
 def run_train(model, ema, dataloader, optimizer, criterion, device):
     """Helper function to perform a single training step."""
     model.train()
     total_loss = 0
-    for x,y in tqdm(dataloader, desc="Training: ", leave=False):
+    for x, y in tqdm(dataloader, desc="Training: ", leave=False):
         x, y = x.to(device), y.to(device)
         optimizer.zero_grad()
 
@@ -94,6 +95,7 @@ def run_train(model, ema, dataloader, optimizer, criterion, device):
         total_loss += loss.item()
 
     return total_loss / len(dataloader)
+
 
 def run_test(model, dataloader, criterion, device):
     """Helper function to perform a single test step."""
@@ -110,6 +112,7 @@ def run_test(model, dataloader, criterion, device):
 
     return total_loss / len(dataloader)
 
+
 def generate_samples(model, device, plot_path):
     model.eval()
     # show the reverse diffusion process for a sample image
@@ -120,16 +123,24 @@ def generate_samples(model, device, plot_path):
     for i in range(3):
         plt.subplot(1, 3, i + 1)
         plt.imshow(denoised_sample[i].permute(1, 2, 0).cpu().detach().numpy())
-        plt.title(f"Label: {(i + 1 * 3)}")
+        plt.title(f"Label: {((i + 1) * 3)}")
         plt.axis("off")
-        
+
     plt.savefig(plot_path)
     plt.close()
 
-def train(cfg: DictConfig, run_dir: Path):
+
+def train(
+    cfg: DictConfig, run_dir: Path, on_epoch_end: Callable[[], None] | None = None
+):
     """Run the full training loop, writing artifacts into run_dir.
 
     Kept free of hydra runtime state so it can be called from Modal too.
+
+    args:
+        cfg (DictConfig): Hydra condif converted to dict
+        run_dir (pathlib.Path): Output directory for the run
+        on_epoch_end (callable | None): hook function to run on the end of epoch (defaults to None)
     """
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -153,9 +164,13 @@ def train(cfg: DictConfig, run_dir: Path):
     criterion = nn.MSELoss()
 
     for epoch in range(cfg.epochs):
+        mean_loss = run_train(
+            model, ema, train_dataloader, optimizer, criterion, device
+        )
 
-        mean_loss = run_train(model, ema, train_dataloader, optimizer, criterion, device)
-        mean_test_loss = run_test(model, test_dataloader, criterion, device)
+        mean_test_loss = None
+        if not cfg.debug.get("skip_test", False):
+            mean_test_loss = run_test(model, test_dataloader, criterion, device)
 
         losses.append(
             {
@@ -176,10 +191,17 @@ def train(cfg: DictConfig, run_dir: Path):
             with ema.averaged(model):
                 generate_samples(model, device, plot_path)
 
+        if on_epoch_end:
+            # when run with modal this will commti to the volume
+            on_epoch_end()
+
     # final results
     plot_path = run_dir / "denoised_samples-final.png"
     with ema.averaged(model):
         generate_samples(model, device, plot_path)
+
+    # store the final weights in runs
+    save_checkpoint(cfg, model, ema, epoch, optimizer, run_dir)
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")

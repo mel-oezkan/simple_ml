@@ -26,23 +26,26 @@ image = (
     .add_local_file(project_root / "main.py", remote_path="/root/main.py")
 )
 
+
+
 app = modal.App("diffusion-vit", image=image)
 
+volume = modal.Volume.from_name("diffusion-runs", create_if_missing=True)
 
-@app.function(gpu="L4", timeout=24 * 60 * 60)
+
+@app.function(gpu="L4", timeout=24 * 60 * 60, volumes={"/runs": volume})
 def modal_runner(
     run_id: str, overrides: list[str] | None = None
 ) -> list[tuple[str, bytes]]:
     """Train on an L4 and hand the run artifacts back to the caller."""
     from hydra import compose, initialize
-
     from main import train
 
     with initialize(version_base=None, config_path="conf"):
         cfg = compose(config_name="config", overrides=overrides or [])
 
-    run_dir = Path("/root/runs") / run_id
-    train(cfg, run_dir)
+    run_dir = Path("/runs") / run_id
+    train(cfg, run_dir, volume.commit)
 
     return [(p.name, p.read_bytes()) for p in sorted(run_dir.iterdir()) if p.is_file()]
 
