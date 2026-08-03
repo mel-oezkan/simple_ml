@@ -2,10 +2,9 @@ from contextlib import contextmanager
 import logging
 
 import torch
+from vit.model_utils import _clean
 
 
-def _clean(name):
-    return name.replace("_orig_mod.", "")
 
 class EMA:
     def __init__(self, model, decay, current_step=0):
@@ -30,7 +29,7 @@ class EMA:
             clean_k = _clean(k)
             if clean_k in self.shadow:
                 merged[k] = self.shadow[clean_k].to(merged[k].dtype)
-                
+
         model.load_state_dict(merged, strict=True)
 
         try: 
