@@ -1,15 +1,20 @@
-batch_size: 512
-epochs: 50
+batch_size: 256
+epochs: 20
 learning_rate: 0.0001
-sample_every: 5
+sample_every: 4
 
 model: 
-  n_blocks: 3
+  n_blocks: 6
   emb_dim: 128
-  patch_size: 1
+  patch_size: 2
   image_size: 28
   n_classes: 10
   out_channels: 1
   mlp_scalar: 4
   T: 1000
   pos_emb: sinusoidal_1d #options: sinusoidal_1d, sinusoidal_2d
+  attn_heads: 8
+
+ema:
+  decay: 0.999
+  warmup: 500
