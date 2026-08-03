@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from omegaconf import DictConfig
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from torchvision import datasets
 from torchvision.transforms import v2
 from tqdm import tqdm
@@ -16,7 +16,7 @@ from vit.diffusion import Diffusion
 from vit.ema import EMA
 
 
-def load_datasets():
+def load_datasets(cfg):
     """Helper function to load the FashionMNIST dataset."""
 
     training_data = datasets.FashionMNIST(
@@ -31,6 +31,13 @@ def load_datasets():
             ]
         ),
     )
+
+    if cfg.debug.debug_n:
+        training_data = Subset(
+            training_data, 
+            range(max(cfg.debug.debug_n, cfg.batch_size))
+        )
+
 
     test_data = datasets.FashionMNIST(
         root="data",
@@ -126,7 +133,7 @@ def train(cfg: DictConfig, run_dir: Path):
     """
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    train_data, test_data = load_datasets()
+    train_data, test_data = load_datasets(cfg)
     train_dataloader, test_dataloader = prepare_dataloaders(cfg, train_data, test_data)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -136,10 +143,9 @@ def train(cfg: DictConfig, run_dir: Path):
         torch.set_float32_matmul_precision("high")
 
     model = Diffusion(**cfg["model"]).to(device)
-    diffusion_model = model.diff_model
+    model.diff_model = torch.compile(model.diff_model)
 
-    ema = EMA(diffusion_model, cfg.ema.decay)
-    model.diff_model = torch.compile(diffusion_model)
+    ema = EMA(model, cfg.ema.decay)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
 
