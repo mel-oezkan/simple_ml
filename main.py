@@ -32,7 +32,7 @@ def load_datasets(cfg):
         ),
     )
 
-    if cfg.debug.debug_n:
+    if cfg.debug.active and cfg.debug.debug_n:
         training_data = Subset(
             training_data, 
             range(max(cfg.debug.debug_n, cfg.batch_size))
@@ -188,6 +188,10 @@ def main(cfg: DictConfig):
     run_id = str(uuid.uuid4())
     run_dir = Path(hydra.utils.get_original_cwd()) / "runs" / run_id
     print(f"Run ID: {run_id} (results in {run_dir})")
+
+    if cfg.debug.active:
+        cfg.batch_size = cfg.debug.batch_size
+        cfg.epochs = cfg.debug.epochs
 
     train(cfg, run_dir)
 

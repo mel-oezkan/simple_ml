@@ -19,4 +19,7 @@ ema:
   decay: 0.986
 
 debug:
+  active: False
   debug_n: null # int or null
+  batch_size: 10
+  epochs: 1
