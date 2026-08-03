@@ -136,9 +136,11 @@ def train(cfg: DictConfig, run_dir: Path):
         torch.set_float32_matmul_precision("high")
 
     model = Diffusion(**cfg["model"]).to(device)
-    ema = EMA(model, cfg.ema.decay, warmup_steps=cfg.ema.warmup)
+    diffusion_model = model.diff_model
 
-    model.diff_model = torch.compile(model.diff_model)
+    ema = EMA(diffusion_model, cfg.ema.decay)
+    model.diff_model = torch.compile(diffusion_model)
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
 
     losses = []
