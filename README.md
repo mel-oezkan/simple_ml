@@ -26,3 +26,18 @@ However to utilize the hydra configs we added an additional flag `--overrides`. 
 uv run modal run modal_train.py --overrides "molde.n_blocks=12 batch_size=512"
 ```
 
+## Evaluation
+
+Download the ImageNet-10K dataset into the repository's ignored `data/` directory:
+
+```bash
+mkdir -p data
+curl -L -o data/imagenet-10k.zip \
+  https://www.kaggle.com/api/v1/datasets/download/priyerana/imagenet-10k
+```
+
+Extract it with:
+
+```bash
+unzip data/imagenet-10k.zip -d data/imagenet-10k
+```
