@@ -4,6 +4,9 @@ import logging
 import torch
 
 
+def _clean(name):
+    return name.replace("_orig_mod.", "")
+
 class EMA:
     def __init__(self, model, decay, current_step=0):
         self.decay = decay
@@ -11,7 +14,7 @@ class EMA:
         # will start with the default init params
         self.shadow = {
             # needs to specify named params otherwise alpha, beta will be averaged
-            k: v.detach().clone() for k, v in model.named_parameters()
+            _clean(k): v.detach().clone() for k, v in model.named_parameters()
         }
 
         self.steps = current_step
@@ -22,13 +25,12 @@ class EMA:
         base_backup = {k: v.detach().clone() for k, v in model.state_dict().items()}
 
         merged = base_backup.copy()
-        for k,v in self.shadow.items():
-            # check if k exists in merged
-            if k not in merged:
-                raise KeyError(f"Invalid, key:{k} not found in model state dict")
-
-            merged[k] = v.to(merged[k].dtype)
-            
+        # we need to iterate over merged and then clean so the match can be found
+        for k in merged:
+            clean_k = _clean(k)
+            if clean_k in self.shadow:
+                merged[k] = self.shadow[clean_k].to(merged[k].dtype)
+                
         model.load_state_dict(merged, strict=True)
 
         try: 
@@ -44,4 +46,4 @@ class EMA:
         d_eff = min(self.decay, (1 + self.steps) / (10 + self.steps))
         for k, v in model.named_parameters():
             if v.dtype.is_floating_point:
-                (self.shadow[k].mul_(d_eff).add_(v.float(), alpha=1 - d_eff))
+                (self.shadow[_clean(k)].mul_(d_eff).add_(v.float(), alpha=1 - d_eff))
