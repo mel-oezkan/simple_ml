@@ -16,5 +16,4 @@ model:
   attn_heads: 8
 
 ema:
-  decay: 0.999
-  warmup: 500
+  decay: 0.986

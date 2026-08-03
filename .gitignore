@@ -1,6 +1,9 @@
 */__pycache__
+__pycache__/*
 *.ipynb
 
 denoised_samples-*.png
 data/
 runs/
+
+.DS_Store
