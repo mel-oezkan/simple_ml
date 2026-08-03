@@ -13,6 +13,7 @@ from torchvision.transforms import v2
 from tqdm import tqdm
 
 from vit.diffusion import Diffusion
+from vit.ema import EMA
 
 
 def load_datasets():
@@ -67,7 +68,7 @@ def prepare_dataloaders(cfg, train_ds, test_ds):
 
     return train_loader, test_loader
 
-def run_train(model, dataloader, optimizer, criterion, device):
+def run_train(model, ema, dataloader, optimizer, criterion, device):
     """Helper function to perform a single training step."""
     model.train()
     total_loss = 0
@@ -81,6 +82,7 @@ def run_train(model, dataloader, optimizer, criterion, device):
         loss = criterion(pred_noise, noise)
         loss.backward()
         optimizer.step()
+        ema.update(model)
 
         total_loss += loss.item()
 
@@ -101,6 +103,22 @@ def run_test(model, dataloader, criterion, device):
 
     return total_loss / len(dataloader)
 
+def generate_samples(model, device, plot_path):
+    model.eval()
+    # show the reverse diffusion process for a sample image
+    labels = torch.tensor([3, 6, 9], dtype=torch.long, device=device)
+    denoised_sample = model.sample(n=3, device=torch.device(device), y=labels)
+
+    plt.figure(figsize=(4 * 3, 4))
+    for i in range(3):
+        plt.subplot(1, 3, i + 1)
+        plt.imshow(denoised_sample[i].permute(1, 2, 0).cpu().detach().numpy())
+        plt.title(f"Label: {(i + 1 * 3)}")
+        plt.axis("off")
+        
+    plt.savefig(plot_path)
+    plt.close()
+
 def train(cfg: DictConfig, run_dir: Path):
     """Run the full training loop, writing artifacts into run_dir.
 
@@ -118,8 +136,9 @@ def train(cfg: DictConfig, run_dir: Path):
         torch.set_float32_matmul_precision("high")
 
     model = Diffusion(**cfg["model"]).to(device)
-    model.diff_model = torch.compile(model.diff_model)
+    ema = EMA(model, cfg.ema.decay, warmup_steps=cfg.ema.warmup)
 
+    model.diff_model = torch.compile(model.diff_model)
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
 
     losses = []
@@ -127,7 +146,7 @@ def train(cfg: DictConfig, run_dir: Path):
 
     for epoch in range(cfg.epochs):
 
-        mean_loss = run_train(model, train_dataloader, optimizer, criterion, device)
+        mean_loss = run_train(model, ema, train_dataloader, optimizer, criterion, device)
         mean_test_loss = run_test(model, test_dataloader, criterion, device)
 
         losses.append(
@@ -145,19 +164,14 @@ def train(cfg: DictConfig, run_dir: Path):
             json.dump(losses, f, indent=2)
 
         if epoch % cfg.sample_every == 0:
-            # show the reverse diffusion process for a sample image
-            labels = torch.tensor([3, 6, 9], dtype=torch.long, device=device)
-            denoised_sample = model.sample(n=3, device=torch.device(device), y=labels)
+            plot_path = run_dir / f"denoised_samples-{epoch + 1}.png"
+            with ema.averaged(model):
+                generate_samples(model, device, plot_path)
 
-            plt.figure(figsize=(4 * 3, 4))
-            for i in range(3):
-                plt.subplot(1, 3, i + 1)
-                plt.imshow(denoised_sample[i].permute(1, 2, 0).cpu().detach().numpy())
-                plt.title(f"Label: {(i + 1 * 3)}")
-                plt.axis("off")
-                
-            plt.savefig(run_dir / f"denoised_samples-{epoch + 1}.png")
-            plt.close()
+    # final results
+    plot_path = run_dir / "denoised_samples-final.png"
+    with ema.averaged(model):
+        generate_samples(model, device, plot_path)
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
