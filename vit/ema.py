@@ -5,7 +5,7 @@ import torch
 
 
 class EMA:
-    def __init__(self, model, decay, current_step=0, warmup_steps=500, ):
+    def __init__(self, model, decay, current_step=0):
         self.decay = decay
 
         # will start with the default init params
@@ -15,7 +15,6 @@ class EMA:
         }
 
         self.steps = current_step
-        self.warmup_steps = warmup_steps
 
     @contextmanager
     def averaged(self, model):
@@ -34,6 +33,6 @@ class EMA:
         self.steps += 1
 
         d_eff = min(self.decay, (1 + self.steps) / (10 + self.steps))
-        for k, v in model.state_dict().items():
+        for k, v in model.named_parameters():
             if v.dtype.is_floating_point:
                 (self.shadow[k].mul_(d_eff).add_(v.float(), alpha=1 - d_eff))
