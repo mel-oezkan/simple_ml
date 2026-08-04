@@ -141,7 +141,7 @@ class FID:
 
         tr_covmean = np.trace(covmean)
         fid = (
-            dist.dot(dist)
+            np.dot(dist, dist)
             + np.trace(sigma_real)
             + np.trace(sigma_fake)
             - 2 * tr_covmean
