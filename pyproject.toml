@@ -10,9 +10,14 @@ dependencies = [
     "jupyterlab>=4.6.2",
     "matplotlib>=3.11.1",
     "modal>=1.5.3",
+    "pytest>=9.1.1",
     "scipy>=1.18.0",
     "tensorflow>=2.21.0",
     "torch>=2.13.0",
     "torchvision>=0.28.0",
     "tqdm>=4.70.0",
 ]
+
+[tool.pytest]
+testpaths = ["tests"]
+pythonpath = ["."]
