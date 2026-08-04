@@ -22,6 +22,7 @@ our diffusion model can only generate image in the shape of 28x28
 thus ne need to upscale the image to the inception shape of (3, 299, 299)
 """
 
+f64 = torch.float64
 
 class FID:
     def __init__(self, feature: int = 2048, model_backbone: str = "inception"):
@@ -39,14 +40,11 @@ class FID:
         self.fake_samples = 0
         self.real_samples = 0
 
-        self.mu_fake = 0
-        self.mu_real = 0
+        self.mu_fake = torch.zeros(feature, dtype=f64)
+        self.mu_real = torch.zeros(feature, dtype=f64)
 
-        self.sigma_fake = np.zeros((feature, feature))
-        self.sigma_real = np.zeros((feature, feature))
-
-        self.centered_prod_fake = np.zeros((feature, feature))
-        self.centered_prod_real = np.zeros((feature, feature))
+        self.centered_prod_fake = np.zeros((feature, feature), dtype=f64)
+        self.centered_prod_real = np.zeros((feature, feature), dtype=f64)
 
     def _load_old(self, mode):
         if mode == "fake":
@@ -94,7 +92,7 @@ class FID:
 
     def feature_statistics(self, features: torch.Tensor, mode: str = "real"):
         # features: (N, 2048)
-        features = features.to(torch.float64)
+        features = features.detach().to(device="cpu", dtype=f64)
 
         mu = torch.mean(features, dim=0)
         centered = features - mu
@@ -107,11 +105,18 @@ class FID:
         eps: float = 1e-6,
     ) -> torch.Tensor:
         """Return a scalar Fréchet distance."""
+        sigma_real_t = self.centered_prod_real / (self.real_samples - 1)
+        sigma_fake_t = self.centered_prod_fake / (self.fake_samples - 1)
 
-        dist = torch.sum((self.mu_real - self.mu_fake) ** 2)
+        mu_real = self.mu_real.detach().cpu().numpy()
+        mu_fake = self.mu_fake.detach().cpu().numpy()
+        sigma_real = sigma_real_t.detach().cpu().numpy()
+        sigma_fake = sigma_fake_t.detach().cpu().numpy()
+
+        dist = torch.sum((mu_real - mu_fake) ** 2)
 
         # algorithm is taken from: https://github.com/GaParmar/clean-fid/blob/main/cleanfid/fid.py
-        covmean, _ = linalg.sqrtm(self.sigma_real.dot(self.sigma_fake), disp=False)
+        covmean, _ = linalg.sqrtm(sigma_real.dot(sigma_fake), disp=False)
 
         if not np.isfinite(covmean).all():
             # common cause rank(COV) <= min(D, N-1)
@@ -124,9 +129,9 @@ class FID:
             print(msg)
 
             # adds (eps) to every eigenvalue:
-            offset = np.eye(self.sigma_real.shape[0]) * eps
+            offset = np.eye(sigma_real.shape[0]) * eps
             covmean = linalg.sqrtm(
-                (self.sigma_real + offset).dot(self.sigma_fake + offset)
+                (sigma_real + offset).dot(sigma_fake + offset)
             )
 
         # Numerical error might give slight imaginary component
@@ -134,12 +139,14 @@ class FID:
             covmean = covmean.real
 
         tr_covmean = np.trace(covmean)
-        return (
+        fid = (
             dist.dot(dist)
-            + np.trace(self.sigma_real)
-            + np.trace(self.sigma_fake)
+            + np.trace(sigma_real)
+            + np.trace(sigma_fake)
             - 2 * tr_covmean
         )
+        
+        return float(np.real(fid))
 
     def frechet_distance_from_folder(self, folder_path: Path) -> torch.Tensor:
         # load the images using PIL
