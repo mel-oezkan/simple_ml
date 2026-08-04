@@ -25,8 +25,9 @@ thus ne need to upscale the image to the inception shape of (3, 299, 299)
 f64 = torch.float64
 
 class FID:
-    def __init__(self, feature: int = 2048, model_backbone: str = "inception"):
+    def __init__(self, feature_size: int = 2048, model_backbone: str = "inception"):
         self.model_backbone = model_backbone
+        self.feature_size = feature_size
 
         # for simplicity we simply remove the fc layers. However for g-FID we would
         # import the inception architecture and modify the forward step
@@ -40,11 +41,11 @@ class FID:
         self.fake_samples = 0
         self.real_samples = 0
 
-        self.mu_fake = torch.zeros(feature, dtype=f64)
-        self.mu_real = torch.zeros(feature, dtype=f64)
+        self.mu_fake = torch.zeros(feature_size, dtype=f64)
+        self.mu_real = torch.zeros(feature_size, dtype=f64)
 
-        self.centered_prod_fake = np.zeros((feature, feature), dtype=f64)
-        self.centered_prod_real = np.zeros((feature, feature), dtype=f64)
+        self.centered_prod_fake = np.zeros((feature_size, feature_size), dtype=np.float64)
+        self.centered_prod_real = np.zeros((feature_size, feature_size), dtype=np.float64)
 
     def _load_old(self, mode):
         if mode == "fake":
@@ -113,10 +114,10 @@ class FID:
         sigma_real = sigma_real_t.detach().cpu().numpy()
         sigma_fake = sigma_fake_t.detach().cpu().numpy()
 
-        dist = torch.sum((mu_real - mu_fake) ** 2)
+        dist = np.sum((mu_real - mu_fake) ** 2)
 
         # algorithm is taken from: https://github.com/GaParmar/clean-fid/blob/main/cleanfid/fid.py
-        covmean, _ = linalg.sqrtm(sigma_real.dot(sigma_fake), disp=False)
+        covmean = linalg.sqrtm(sigma_real.dot(sigma_fake))
 
         if not np.isfinite(covmean).all():
             # common cause rank(COV) <= min(D, N-1)
@@ -145,7 +146,7 @@ class FID:
             + np.trace(sigma_fake)
             - 2 * tr_covmean
         )
-        
+
         return float(np.real(fid))
 
     def frechet_distance_from_folder(self, folder_path: Path) -> torch.Tensor:
