@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
 from torchvision.models import Inception_V3_Weights, inception_v3
 
+from tqdm import tqdm
 
 def load_backbone_processor(model_name: str = "inception"):
     processor_by_model = {
@@ -24,16 +25,20 @@ thus ne need to upscale the image to the inception shape of (3, 299, 299)
 
 f64 = torch.float64
 
+
 class FID:
     def __init__(self, feature_size: int = 2048, model_backbone: str = "inception"):
         self.model_backbone = model_backbone
         self.feature_size = feature_size
+
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         # for simplicity we simply remove the fc layers. However for g-FID we would
         # import the inception architecture and modify the forward step
         if model_backbone == "inception":
             self.model = inception_v3(weights=Inception_V3_Weights.DEFAULT)
             self.model.fc = nn.Identity()
+            self.model = self.model.to(self.device)
             self.model.eval()
         else:
             raise NotImplementedError(":((")
@@ -44,8 +49,12 @@ class FID:
         self.mu_fake = torch.zeros(feature_size, dtype=f64)
         self.mu_real = torch.zeros(feature_size, dtype=f64)
 
-        self.centered_prod_fake = np.zeros((feature_size, feature_size), dtype=np.float64)
-        self.centered_prod_real = np.zeros((feature_size, feature_size), dtype=np.float64)
+        self.centered_prod_fake = np.zeros(
+            (feature_size, feature_size), dtype=np.float64
+        )
+        self.centered_prod_real = np.zeros(
+            (feature_size, feature_size), dtype=np.float64
+        )
 
     def _load_old(self, mode):
         if mode == "fake":
@@ -73,7 +82,7 @@ class FID:
             self.sigma_real = new_sigma
             self.real_samples = total
             return
-        
+
         raise ValueError(f"{mode} not valid either use ['real', 'fake']")
 
     def _update(
@@ -82,14 +91,26 @@ class FID:
         old_prod, old_mu, old_n = self._load_old(mode)
         total = old_n + new_n
 
-        delta = (new_mu - old_mu)[:, None]
+        old_prod = torch.as_tensor(old_prod, dtype=f64)
+        delta = (new_mu - old_mu)
 
         prod_merged = (
-            old_prod + new_prod + (old_n * new_n) / (total) * (delta @ delta.T)
+            old_prod + new_prod 
+            + (old_n * new_n /total)  
+            * torch.outer(delta, delta)
         )
-        mu_merged = old_mu + (delta.unsqueeze(-1) * new_n / total)
+        mu_merged = old_mu + delta * (new_n / total)
 
         self._update_mode(mu_merged, prod_merged, total, mode)
+
+    @staticmethod
+    def compute_features(self, data_loader):
+        features = []
+        with torch.no_grad():
+            for x, y in data_loader:
+                features.append(self.model(x).detach().cpu())
+
+        return features
 
     def feature_statistics(self, features: torch.Tensor, mode: str = "real"):
         # features: (N, 2048)
@@ -131,9 +152,7 @@ class FID:
 
             # adds (eps) to every eigenvalue:
             offset = np.eye(sigma_real.shape[0]) * eps
-            covmean = linalg.sqrtm(
-                (sigma_real + offset).dot(sigma_fake + offset)
-            )
+            covmean = linalg.sqrtm((sigma_real + offset).dot(sigma_fake + offset))
 
         # Numerical error might give slight imaginary component
         if np.iscomplexobj(covmean):
@@ -141,7 +160,7 @@ class FID:
 
         tr_covmean = np.trace(covmean)
         fid = (
-            np.dot(dist, dist)
+            dist
             + np.trace(sigma_real)
             + np.trace(sigma_fake)
             - 2 * tr_covmean
@@ -149,21 +168,31 @@ class FID:
 
         return float(np.real(fid))
 
-    def frechet_distance_from_folder(self, folder_path: Path) -> torch.Tensor:
+
+    def frechet_distance_from_folder(
+        self, folder_real: Path, folder_fake: Path, batch_size: int = 128
+    ) -> torch.Tensor:
         # load the images using PIL
-        data_path = "data/imagenet-10k/imagenet_subtrain"
-
         transform_fn = load_backbone_processor(self.model_backbone)
-        ds = ImageFolder(data_path, transform=transform_fn)
+        ds_real = ImageFolder(folder_real, transform=transform_fn)
+        ds_fake = ImageFolder(folder_fake, transform=transform_fn)
 
-        data_loader = DataLoader(
-            ds,
-            512,
-            shuffle=True,
-        )
+        data_loader_real = DataLoader(ds_real, batch_size,)
+        data_loader_fake = DataLoader(ds_fake, batch_size,)
 
-        # create a dataloader
+        print("Computing real features")
+        with torch.no_grad():
+            for x, _ in tqdm(data_loader_real):
+                x = x.to(self.device)
+                feat = self.model(x)
+                self.feature_statistics(feat, "real")
 
-        # compute the features
+        print("Computing fake features")
+        with torch.no_grad():
+            for x, _ in tqdm(data_loader_fake):
+                x = x.to(self.device)
+                feat = self.model(x)
+                self.feature_statistics(feat, "fake")
 
-        pass
+        print("Returning FID: ")
+        return self.frechet_distance()
