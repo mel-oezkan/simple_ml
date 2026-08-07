@@ -4,15 +4,6 @@ This is a collection of various DL methods for image generation trained on very 
 
 The goal of this repo is reimplementing existing ideas and understading them better!
 
-## List of possible Improvements
-- Plain Diffusion Model: 
-- Diffusion Model with 2d embddings
-- Modify loss to inlcude cfg
-- Improvements from https://github.com/LTH14/JiT/blob/main/model_jit.py:
-    - Effectiveness of RMSNorm
-    - Delaying the conditioning to later layers
-- Spiral Rope https://arxiv.org/pdf/2602.03227
-    - Actually use Rope correctly
 
 ## Running with Modal
 
@@ -41,3 +32,17 @@ Extract it with:
 ```bash
 unzip data/imagenet-10k.zip -d data/imagenet-10k
 ```
+
+
+## List of possible Improvements
+- Plain Diffusion Model: 
+- Diffusion Model with 2d embddings
+- Modify loss to inlcude cfg
+- Improvements from https://github.com/LTH14/JiT/blob/main/model_jit.py:
+    - Effectiveness of RMSNorm
+    - Delaying the conditioning to later layers
+- Spiral Rope https://arxiv.org/pdf/2602.03227
+    - Actually use Rope correctly
+
+## Possible Problems
+- When loading the 
