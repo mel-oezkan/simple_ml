@@ -102,14 +102,13 @@ class FID:
 
         self._update_mode(mu_merged, prod_merged, total, mode)
 
-    @staticmethod
     def compute_features(self, data_loader):
         features = []
         with torch.no_grad():
             for x, y in data_loader:
                 features.append(self.model(x).detach().cpu())
 
-        return features
+        return torch.cat(features, dim=0)
 
     def feature_statistics(self, features: torch.Tensor, mode: str = "real"):
         # features: (N, 2048)
@@ -220,3 +219,27 @@ class FID:
 
         print("Returning FID: ")
         return self.frechet_distance()
+
+    def kid_distance_from_folder(
+        self, folder_real: Path, folder_fake: Path, batch_size: int = 128
+    ) -> torch.Tensor:
+        #! this will definetly cause some ood issues since we need to keep track
+        #! of the features. We should move all the results to cpu after finishing
+        #! the calculation.
+
+        # load the images using PIL
+        transform_fn = load_backbone_processor(self.model_backbone)
+        ds_real = ImageFolder(folder_real, transform=transform_fn)
+        ds_fake = ImageFolder(folder_fake, transform=transform_fn)
+
+        loader_real = DataLoader(ds_real, batch_size)
+        loader_fake = DataLoader(ds_fake, batch_size)
+
+        print("Computing real features")
+        real_fetures = self.compute_features(loader_real)
+
+        print("Computing fake features")
+        fake_fetures = self.compute_features(loader_fake)
+        
+        print("Returning FID: ")
+        return self.compute_kid(real_fetures, fake_fetures)
