@@ -104,6 +104,7 @@ class FID:
 
     def compute_features(self, data_loader):
         features = []
+        
         with torch.no_grad():
             for x, y in data_loader:
                 features.append(self.model(x).detach().cpu())
@@ -240,6 +241,6 @@ class FID:
 
         print("Computing fake features")
         fake_fetures = self.compute_features(loader_fake)
-        
+
         print("Returning FID: ")
         return self.compute_kid(real_fetures, fake_fetures)
