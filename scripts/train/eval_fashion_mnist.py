@@ -125,7 +125,7 @@ def evaluate_checkpoint(
     device=None,
 ):
     # Imported here to keep evaluate_model reusable from the training script.
-    from train_fashion_mnist import build_model
+    from scripts.train.train_fashion_mnist import build_model
 
     device = get_device() if device is None else torch.device(device)
     checkpoint = torch.load(
