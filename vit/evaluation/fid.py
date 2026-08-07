@@ -10,6 +10,7 @@ from torchvision.models import Inception_V3_Weights, inception_v3
 
 from tqdm import tqdm
 
+
 def load_backbone_processor(model_name: str = "inception"):
     processor_by_model = {
         "inception": Inception_V3_Weights.DEFAULT.transforms(),
@@ -92,12 +93,10 @@ class FID:
         total = old_n + new_n
 
         old_prod = torch.as_tensor(old_prod, dtype=f64)
-        delta = (new_mu - old_mu)
+        delta = new_mu - old_mu
 
         prod_merged = (
-            old_prod + new_prod 
-            + (old_n * new_n /total)  
-            * torch.outer(delta, delta)
+            old_prod + new_prod + (old_n * new_n / total) * torch.outer(delta, delta)
         )
         mu_merged = old_mu + delta * (new_n / total)
 
@@ -159,15 +158,34 @@ class FID:
             covmean = covmean.real
 
         tr_covmean = np.trace(covmean)
-        fid = (
-            dist
-            + np.trace(sigma_real)
-            + np.trace(sigma_fake)
-            - 2 * tr_covmean
-        )
+        fid = dist + np.trace(sigma_real) + np.trace(sigma_fake) - 2 * tr_covmean
 
         return float(np.real(fid))
 
+    def compute_kid(self, feat_real, feat_fake):
+        # sanity checks
+        if feat_fake.dim() != 2 or feat_real.dim() != 2:
+            raise ValueError("features have to be 2dimensional (n_samples, emb_dim)")
+
+        assert feat_real.shape[1] == feat_fake.shape[1], (
+            "emb dim between real and fake needs to match"
+        )
+
+        def poly_kernel(x, y):
+            return torch.pow(torch.inner(x, y) / self.feature_size + 1.0, 3)
+
+        m, n = feat_real.shape[0], feat_fake.shape[0]
+        assert m > 1 and n > 1, "Need at least 2 samples for each feature"
+
+        kernel_real = poly_kernel(feat_real, feat_real)
+        kernel_fake = poly_kernel(feat_fake, feat_fake)
+        kernel_mixed = poly_kernel(feat_real, feat_fake)
+
+        real_term = (kernel_real.sum() - kernel_real.diagonal().sum()) / (m * (m - 1))
+        fake_term = (kernel_fake.sum() - kernel_fake.diagonal().sum()) / (n * (n - 1))
+        mixed_term = kernel_mixed.mean()
+
+        return real_term + fake_term - 2.0 * mixed_term
 
     def frechet_distance_from_folder(
         self, folder_real: Path, folder_fake: Path, batch_size: int = 128
@@ -177,8 +195,14 @@ class FID:
         ds_real = ImageFolder(folder_real, transform=transform_fn)
         ds_fake = ImageFolder(folder_fake, transform=transform_fn)
 
-        data_loader_real = DataLoader(ds_real, batch_size,)
-        data_loader_fake = DataLoader(ds_fake, batch_size,)
+        data_loader_real = DataLoader(
+            ds_real,
+            batch_size,
+        )
+        data_loader_fake = DataLoader(
+            ds_fake,
+            batch_size,
+        )
 
         print("Computing real features")
         with torch.no_grad():
