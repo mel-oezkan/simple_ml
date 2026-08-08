@@ -16,6 +16,7 @@ from tqdm import tqdm
 from vit.diffusion import Diffusion
 from vit.ema import EMA
 from vit.model_utils import save_checkpoint
+from vit.utils.random import set_seed, seed_worker
 
 
 def load_datasets(cfg):
@@ -57,12 +58,11 @@ def load_datasets(cfg):
 
 def prepare_dataloaders(cfg, train_ds, test_ds):
     """Helper function to prepare the dataloaders for training and testing."""
-
     train_loader = DataLoader(
         train_ds,
         batch_size=cfg.batch_size,
         shuffle=True,
-        num_workers=4,
+        num_workers=cfg.get("num_workers", 4),
         drop_last=True,
     )
 
@@ -70,7 +70,7 @@ def prepare_dataloaders(cfg, train_ds, test_ds):
         test_ds,
         batch_size=cfg.batch_size,
         shuffle=False,
-        num_workers=4,
+        num_workers=cfg.get("num_workers", 4),
     )
 
     return train_loader, test_loader
@@ -143,6 +143,7 @@ def train(
         on_epoch_end (callable | None): hook function to run on the end of epoch (defaults to None)
     """
     run_dir.mkdir(parents=True, exist_ok=True)
+    set_seed(cfg.seed)
 
     train_data, test_data = load_datasets(cfg)
     train_dataloader, test_dataloader = prepare_dataloaders(cfg, train_data, test_data)
