@@ -40,13 +40,21 @@ class CNNClassifier(nn.Module):
             nn.GELU(),
             nn.MaxPool2d(2),
         )
+
         self.classifier = nn.Sequential(
             nn.Flatten(),
             nn.Linear(128 * 7 * 7, 112),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(112, num_classes),
         )
+            
+        self.out_head = nn.Linear(112, num_classes),
 
-    def forward(self, x):
-        return self.classifier(self.features(x))
+    def forward(self, x, return_features=False):
+        feats = self.classifier(self.features(x))
+        logits = self.out_head(feats)
+
+        if return_features:
+            return logits, feats
+
+        return logits

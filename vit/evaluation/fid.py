@@ -10,10 +10,13 @@ from torchvision.models import Inception_V3_Weights, inception_v3
 
 from tqdm import tqdm
 
+from vit.data.transforms import TransformFashionMNIST
+
 
 def load_backbone_processor(model_name: str = "inception"):
     processor_by_model = {
         "inception": Inception_V3_Weights.DEFAULT.transforms(),
+        "fashion-mnist_cnn": TransformFashionMNIST.eval
     }
 
     return processor_by_model[model_name]
@@ -42,7 +45,7 @@ class FID:
             self.model = self.model.to(self.device)
             self.model.eval()
         else:
-            raise NotImplementedError(":((")
+            raise NotImplementedError(":(")
 
         self.fake_samples = 0
         self.real_samples = 0

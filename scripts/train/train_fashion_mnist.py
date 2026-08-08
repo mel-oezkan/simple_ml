@@ -12,6 +12,7 @@ from tqdm import tqdm
 from scripts.train.eval_fashion_mnist import evaluate_model, get_device, save_results
 from vit.models.classifier import MLPClassifier, CNNClassifier
 
+from vit.data.transforms import TransformFashionMNIST
 class VisionTransformer(nn.Module):
     def __init__(
         self,
@@ -190,19 +191,8 @@ def set_seed(seed):
 
 
 def get_train_validation_data(data_dir, validation_size, split_seed):
-    train_transform = transforms.Compose(
-        [
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5,), (0.5,)),
-        ]
-    )
-    evaluation_transform = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Normalize((0.5,), (0.5,)),
-        ]
-    )
+    train_transform = TransformFashionMNIST.train
+    evaluation_transform = TransformFashionMNIST.eval
 
     augmented_data = datasets.FashionMNIST(
         root=data_dir,
