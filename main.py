@@ -13,10 +13,8 @@ from torchvision import datasets
 from torchvision.transforms import v2
 from tqdm import tqdm
 
-from vit.diffusion import Diffusion
-from vit.ema import EMA
-from vit.model_utils import save_checkpoint
-from vit.utils.random import set_seed, seed_worker
+from vit.model_utils import prepare_model, save_checkpoint
+from vit.utils.random import set_seed
 
 
 def load_datasets(cfg):
@@ -154,12 +152,7 @@ def train(
         # fused flash-attention pattern match
         torch.set_float32_matmul_precision("high")
 
-    model = Diffusion(**cfg["model"]).to(device)
-    model.diff_model = torch.compile(model.diff_model)
-
-    ema = EMA(model, cfg.ema.decay)
-
-    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
+    model, ema, optimizer = prepare_model(cfg, device)
 
     losses = []
     criterion = nn.MSELoss()
