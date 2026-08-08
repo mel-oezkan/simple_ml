@@ -22,3 +22,7 @@ dependencies = [
 [tool.pytest]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "gpu: requires a GPU",
+    "integration: requires imaegs or downloaded model weights",
+]

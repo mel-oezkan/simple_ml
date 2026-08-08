@@ -1,3 +1,5 @@
+import pytest
+
 from vit.evaluation.fid import FID
 import torch
 
@@ -23,6 +25,8 @@ def test_simple_calculation():
     print(dist)
 
 
+@pytest.mark.gpu
+@pytest.mark.integration
 def test_fid_distance():
     fid = FID()
 
@@ -48,6 +52,8 @@ def test_fid_distance():
     assert torch.allclose(fid_distance, expected, rtol=0.05)
 
 
+@pytest.mark.gpu
+@pytest.mark.integration
 def test_kid_distance():
     fid = FID()
 
