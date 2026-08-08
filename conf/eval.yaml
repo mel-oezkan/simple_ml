@@ -1,0 +1,8 @@
+batch_size: 128
+
+data:
+  root: data/imagenet-10k/imagenet_subtrain # data/imagenet-10k/imagenet_subtrain
+  image_dataset: True
+  n_classes: 10
+
+model: runs/a58c1482-067e-4d84-beea-2fd9e6a3cbc6/checkpoint.pt
