@@ -28,7 +28,9 @@ class EMA:
         for k in merged:
             clean_k = _clean(k)
             if clean_k in self.shadow:
-                merged[k] = self.shadow[clean_k].to(merged[k].dtype)
+                merged[k] = self.shadow[clean_k].to(
+                    device=merged[k].device, dtype=merged[k].dtype
+                )
 
         model.load_state_dict(merged, strict=True)
 
