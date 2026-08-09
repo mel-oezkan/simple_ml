@@ -120,7 +120,8 @@ def generate_samples(model, device, plot_path):
     plt.figure(figsize=(4 * 3, 4))
     for i in range(3):
         plt.subplot(1, 3, i + 1)
-        plt.imshow(denoised_sample[i].permute(1, 2, 0).cpu().detach().numpy())
+        image = denoised_sample[i, 0].add(1).div(2).clamp(0,1)
+        plt.imshow(image.cpu(), cmap="gray", vmin=0, vmax=1)
         plt.title(f"Label: {((i + 1) * 3)}")
         plt.axis("off")
 
@@ -212,5 +213,5 @@ def main(cfg: DictConfig):
     train(cfg, run_dir)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__": 
     main()
