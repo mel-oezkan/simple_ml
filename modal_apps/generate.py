@@ -3,10 +3,6 @@ from pathlib import Path
 
 import modal
 
-# torch 2.13 resolves nvidia-cuda-runtime 13.x, so the base image must be CUDA 13.
-# `runtime` (not `devel`) is enough for the torch wheels, which bundle their CUDA
-# libs, but Triton compiles a small C extension at runtime and needs a host
-# compiler, so gcc/python headers are installed below.
 cuda_version = "13.0.2"
 flavor = "runtime"
 operating_sys = "ubuntu24.04"
@@ -28,12 +24,20 @@ image = (
 
 
 
-app = modal.App("diffusion-vit", image=image)
+app = modal.App("diffusion-generaiton-evaluation", image=image)
 
-volume = modal.Volume.from_name("diffusion-runs", create_if_missing=True)
+volume_runs = modal.Volume.from_name("diffusion-runs", create_if_missing=True)
+volume_generation = modal.Volume.from_name("diffusion-generation", create_if_missing=True)
 
-
-@app.function(gpu="L4", timeout=24 * 60 * 60, volumes={"/runs": volume})
+hours = 2
+@app.function(
+    gpu="L4", 
+    timeout=hours * 60 * 60,
+    volumes={
+        "/runs": volume_runs,
+        "/eval_generation": volume_generation
+    }
+)
 def modal_runner(
     run_id: str, overrides: list[str] | None = None
 ) -> list[tuple[str, bytes]]:
@@ -45,21 +49,6 @@ def modal_runner(
         cfg = compose(config_name="config", overrides=overrides or [])
 
     run_dir = Path("/runs") / run_id
-    train(cfg, run_dir, volume.commit)
+    train(cfg, run_dir, volume_runs.commit)
 
     return [(p.name, p.read_bytes()) for p in sorted(run_dir.iterdir()) if p.is_file()]
-
-
-@app.local_entrypoint()
-def cli(overrides: str = ""):
-    # e.g. modal run modal_train.py --overrides "epochs=5 batch_size=256"
-    run_id = str(uuid.uuid4())
-    print(f"Run ID: {run_id}")
-    artifacts = modal_runner.remote(run_id, overrides.split() if overrides else [])
-
-    run_dir = project_root / "runs" / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
-    for name, data in artifacts:
-        (run_dir / name).write_bytes(data)
-
-    print(f"Wrote {len(artifacts)} artifacts to {run_dir}")
