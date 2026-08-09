@@ -11,13 +11,37 @@ from torchvision import transforms
 
 
 def acc(pred, label):
-    pass
+    if pred.ndim > label.ndim:
+        pred = pred.argmax(dim=-1)
+        
+    return (pred == label).float().mean()
 
-def conditioned_acc():
-    pass
+
+def conditioned_acc(cfg, labels: torch.Tensor, predictions: torch.Tensor):
+    device = predictions.device
+    confusion_mat = torch.zeros(
+        (cfg.data.n_classes, cfg.data.n_classes),
+        dtype=torch.lang,
+        device=device
+    )
+
+    for class_idx in range(cfg.data.n_classes):
+        # indx all labels 
+        rows_preds = predictions[labels == class_idx]
+
+        confusion_mat[class_idx] = torch.bincount(
+            rows_preds.long(),
+            minlength=cfg.data.n_classes,
+        )
+    class_totals = confusion_mat.sum(dim=1)
+    per_class_accuracy = confusion_mat.diag() / class_totals
+
+    return confusion_mat, per_class_accuracy
 
 
-def classifier_evaluation(cfg: DictConfig, classifier_path: Path, generated_image_path: Path):
+def classifier_evaluation(
+    cfg: DictConfig, classifier_path: Path, generated_image_path: Path
+):
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     model = torch.load(classifier_path)
@@ -39,26 +63,28 @@ def classifier_evaluation(cfg: DictConfig, classifier_path: Path, generated_imag
         cfg.batch_size,
     )
 
-    confusion_mat  = torch.zeros((cfg.data.n_classes, cfg.data.n_classes)).to(device)
+    confusion_mat = torch.zeros((cfg.data.n_classes, cfg.data.n_classes)).to(device)
     with torch.no_grad():
-        for (x,y) in data_loader_generated:
+        for x, y in data_loader_generated:
             x, y = x.to(device), y.to(device)
 
             pred = model(x)
             pred_classes = torch.argmax(pred, dim=1)
 
-            for i,j in zip(y, pred_classes):
+            for i, j in zip(y, pred_classes):
                 confusion_mat[i][j] += 1
 
     # for each class compute the class conditional and the average
-    total_correct = 0 
+    total_correct = 0
     per_class_acc = {}
     for class_index in range(cfg.data.n_classes):
         correct = confusion_mat[class_index][class_index].item()
         total_correct += correct
 
         per_class_total = confusion_mat[class_index].sum().item()
-        per_class_acc[class_index] = correct / per_class_total if per_class_total > 0 else "N/A"
+        per_class_acc[class_index] = (
+            correct / per_class_total if per_class_total > 0 else "N/A"
+        )
 
     return total_correct / len(ds_generated), per_class_acc
 
