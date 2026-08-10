@@ -7,6 +7,8 @@ eval:
   preview_count: 5
   checkpoint_path: runs/4f065c86-4a19-4401-891c-b7094f71ad31/checkpoint.pt
 
+  # Classifier features produce a domain-specific Fréchet distance, not standard FID.
+  fid_backbone: fashion-mnist_cnn
   classifier: runs/classifier_experiments/models/cnn/C3/best.pt
 
   # root: data/imagenet-10k/imagenet_subtrain # data/imagenet-10k/imagenet_subtrain
