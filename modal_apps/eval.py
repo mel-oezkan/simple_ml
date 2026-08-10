@@ -1,7 +1,7 @@
-import uuid
 from pathlib import Path
 
 import modal
+from nanoid import generate
 
 # torch 2.13 resolves nvidia-cuda-runtime 13.x, so the base image must be CUDA 13.
 # `runtime` (not `devel`) is enough for the torch wheels, which bundle their CUDA
@@ -18,7 +18,7 @@ image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.12")
     .apt_install("gcc", "g++", "python3-dev")
     .pip_install("torch>=2.13.0", "torchvision>=0.28.0")
-    .pip_install("einops", "hydra-core", "matplotlib", "tqdm")
+    .pip_install("einops", "hydra-core", "matplotlib", "nanoid", "tqdm")
     # mirror the local layout so `from vit.diffusion import ...` and hydra's
     # relative config_path both resolve the same way they do on a laptop
     .add_local_dir(project_root / "vit", remote_path="/root/vit")
@@ -53,7 +53,7 @@ def modal_runner(
 @app.local_entrypoint()
 def cli(overrides: str = ""):
     # e.g. modal run modal_train.py --overrides "epochs=5 batch_size=256"
-    run_id = str(uuid.uuid4())
+    run_id = generate()
     print(f"Run ID: {run_id}")
     artifacts = modal_runner.remote(run_id, overrides.split() if overrides else [])
 

@@ -13,16 +13,15 @@ base_image = (
     modal.Image.from_registry(f"nvidia/cuda:{CUDA_TAG}", add_python="3.12")
     .apt_install("gcc", "g++", "python3-dev")
     .pip_install("torch>=2.13.0", "torchvision>=0.28.0")
-    .pip_install("einops", "hydra-core", "matplotlib", "tqdm")
+    .pip_install("einops", "hydra-core", "matplotlib", "nanoid", "tqdm")
  
 )
 
 ml_image = (
     base_image
+    .add_local_python_source("modal_apps", "vit", "scripts")
     # mirror the local layout so `from vit.diffusion import ...` and hydra's
     # relative config_path both resolve the same way they do on a laptop
-    .add_local_dir(PROJECT_ROOT / "vit", remote_path="/root/vit")
     .add_local_dir(PROJECT_ROOT / "conf", remote_path=REMOTE_CONFIG_PATH)
     .add_local_file(PROJECT_ROOT / "main.py", remote_path="/root/main.py")   
 ) 
-

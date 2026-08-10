@@ -1,5 +1,4 @@
 from pathlib import Path
-from uuid import UUID
 
 from vit.evaluation.cond_acc import classifier_evaluation
 from vit.data.transforms import TransformFashionMNIST
@@ -13,8 +12,8 @@ def eval_classification_accuracy(cfg, runs_path: Path, generation_id: str) -> di
     # ? no seed setting is needed since no rng is used
 
     # determine the run_id from the checkpoint path
-    configured_checkpoint = cfg.eval.checkpoint_path
-    run_id = str(UUID(configured_checkpoint.parent.name))
+    configured_checkpoint = Path(cfg.eval.checkpoint_path)
+    run_id = configured_checkpoint.parent.name
 
     # define the storage path for the eval run
     eval_path = runs_path / run_id

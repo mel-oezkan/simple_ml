@@ -1,12 +1,10 @@
-import uuid
 from pathlib import Path
 
 import modal
+from nanoid import generate
 
 from modal_apps.images import PROJECT_ROOT, REMOTE_CONFIG_PATH, ml_image
 from modal_apps.resources import RUNS_PATH, runs_volume
-
-
 
 app = modal.App("diffusion-vit", image=ml_image)
 
@@ -25,7 +23,7 @@ def modal_train(
     ):
         cfg = compose(config_name="config", overrides=overrides or [])
 
-    run_dir = Path("/runs") / run_id
+    run_dir = Path(RUNS_PATH) / run_id
     train(cfg, run_dir, runs_volume.commit)
 
     return [(p.name, p.read_bytes()) for p in sorted(run_dir.iterdir()) if p.is_file()]
@@ -34,7 +32,7 @@ def modal_train(
 @app.local_entrypoint()
 def cli(overrides: str = ""):
     # e.g. modal run modal_train.py --overrides "epochs=5 batch_size=256"
-    run_id = str(uuid.uuid4())
+    run_id = generate()
     print(f"Run ID: {run_id}")
     artifacts = modal_train.remote(
         run_id, 

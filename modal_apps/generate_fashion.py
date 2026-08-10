@@ -1,17 +1,12 @@
 import random
 import shlex
 from pathlib import Path
-from uuid import UUID, uuid4
 
 import modal
+from nanoid import generate
 
 from modal_apps.images import PROJECT_ROOT, ml_image
-from modal_apps.resources import (
-    GENERATIONS_PATH,
-    RUNS_PATH,
-    generations_volume,
-    runs_volume,
-)
+from modal_apps.resources import RUNS_PATH, runs_volume
 from scripts.eval.generate_eval_samples import generate_samples
 from vit.utils.random import set_seed
 
@@ -25,7 +20,6 @@ hours = 2
     timeout=hours * 60 * 60,
     volumes={
         RUNS_PATH: runs_volume,
-        GENERATIONS_PATH: generations_volume,
     },
 )
 def modal_runner(
@@ -46,8 +40,7 @@ def modal_runner(
         raise ValueError("preview_count must be non-negative")
 
     configured_checkpoint = Path(cfg.eval.checkpoint_path)
-    run_id = str(UUID(configured_checkpoint.parent.name))
-    generation_id = str(UUID(generation_id))
+    run_id = configured_checkpoint.parent.name
 
     checkpoint_path = Path(RUNS_PATH) / run_id / configured_checkpoint.name
     cfg.eval.checkpoint_path = str(checkpoint_path)
@@ -58,7 +51,7 @@ def modal_runner(
         force_add=True,
     )
 
-    save_dir = Path(GENERATIONS_PATH) / run_id / generation_id
+    save_dir = Path(RUNS_PATH) / run_id / generation_id
     generate_samples(cfg, save_dir)
 
     image_paths = sorted(save_dir.rglob("*.png"))
@@ -73,14 +66,14 @@ def modal_runner(
     ]
 
     # Make every generated image visible through the Volume after this call.
-    generations_volume.commit()
-    volume_path = str(save_dir.relative_to(GENERATIONS_PATH))
+    runs_volume.commit()
+    volume_path = str(save_dir.relative_to(RUNS_PATH))
     return volume_path, previews
 
 
 @app.local_entrypoint()
 def cli(overrides: str = ""):
-    generation_id = str(uuid4())
+    generation_id = generate()
     volume_path, previews = modal_runner.remote(
         generation_id,
         shlex.split(overrides),
@@ -92,5 +85,5 @@ def cli(overrides: str = ""):
         local_path.parent.mkdir(parents=True, exist_ok=True)
         local_path.write_bytes(data)
 
-    print(f"Generated images in diffusion-generations/{volume_path}")
+    print(f"Generated images in diffusion-runs/{volume_path}")
     print(f"Wrote {len(previews)} preview images to {preview_dir}")

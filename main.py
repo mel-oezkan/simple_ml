@@ -1,10 +1,10 @@
 import json
-from typing import Callable
-import uuid
 from pathlib import Path
+from typing import Callable
 
 import hydra
 import matplotlib.pyplot as plt
+from nanoid import generate
 import torch
 import torch.nn as nn
 from omegaconf import DictConfig
@@ -202,7 +202,7 @@ def train(
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig):
     # hydra calls main with the config only, so the run dir is built here
-    run_id = str(uuid.uuid4())
+    run_id = generate()
     run_dir = Path(hydra.utils.get_original_cwd()) / "runs" / run_id
     print(f"Run ID: {run_id} (results in {run_dir})")
 
