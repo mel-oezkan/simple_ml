@@ -77,7 +77,7 @@ class Diffusion(nn.Module):
         return buf[t].view(-1, 1, 1, 1)  # (B, 1, 1, 1)
 
     @torch.no_grad()
-    def sample(self, n: int, device: torch.device, y=None) -> torch.Tensor:
+    def sample(self, n: int, device: torch.device, y=None, guidance_scale=1.0) -> torch.Tensor:
         """Sample from the diffusion model.
 
         Args:
@@ -89,18 +89,22 @@ class Diffusion(nn.Module):
             n, self.out_channels, self.image_size, self.image_size, device=device
         )
 
-        return self.reverse(x_T, y=y)
+        return self.reverse(x_T, y=y, guidance_scale=guidance_scale)
 
-    def reverse(self, x_curr: torch.Tensor, y=None) -> torch.Tensor:
+    def reverse(self, x_curr: torch.Tensor, y=None, guidance_scale=1.0) -> torch.Tensor:
         assert x_curr.dim() == 4, "x_curr must be a 4D tensor (B, C, H, W)"
 
         with torch.no_grad():
+            # ddpm diffusion steps
             for t in torch.arange(self.T - 1, -1, -1, dtype=torch.long):
+
+                # final output
                 if t == 0:
                     z = torch.zeros_like(x_curr)
                 else:
                     z = torch.randn_like(x_curr)
 
+                # match the time shape to the input batch
                 batched_t = torch.full(
                     (x_curr.shape[0],), t, 
                     dtype=torch.long, 
@@ -111,10 +115,20 @@ class Diffusion(nn.Module):
                 frac = (1 - self.extract(self.alpha, batched_t)) / self.extract(
                     self.one_minus_alpha_bar_sqrt, batched_t
                 )
+
                 sigma = self.extract(self.beta_sqrt, batched_t)
 
+                if y is not None and guidance_scale != 1.0:
+                    eps_cond = self.diff_model(x_curr, batched_t, y)
+                    eps_uncond = self.diff_model(x_curr, batched_t, None)
+
+                    eps = eps_uncond + guidance_scale * (eps_cond - eps_uncond)
+
+                else:
+                    eps = self.diff_model(x_curr, batched_t, y)
+
                 x_curr = (
-                    s * (x_curr - frac * self.diff_model(x_curr, batched_t, y)) + sigma * z
+                    s * (x_curr - frac * eps) + sigma * z
                 )
 
         return x_curr
@@ -132,6 +146,8 @@ class Diffusion(nn.Module):
         """
 
         t = torch.randint(0, self.T, (x_0.shape[0],), device=x_0.device).long()
+
+        # simplify the ddpm equation 
         u = self.extract(self.alpha_bar_sqrt, t)
         v = self.extract(self.one_minus_alpha_bar_sqrt, t)
 
