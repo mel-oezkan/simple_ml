@@ -8,7 +8,7 @@ from torchvision import transforms
 from torchvision.datasets import ImageFolder
 
 from vit.evaluation.fid import load_backbone_processor
-from vit.models.classifier import CNNClassifier
+from vit.models.classifier import load_cnn_classifier
 
 
 def acc(pred, label):
@@ -48,9 +48,11 @@ def classifier_evaluation(
 ) -> tuple[float, dict[int, float], np.ndarray]:
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # init the classifier and then load the model
-    model = CNNClassifier(cfg.data.n_classes)
-    model.load_state_dict(torch.load(classifier_path, map_location=device))
+    model = load_cnn_classifier(
+        classifier_path,
+        num_classes=cfg.data.n_classes,
+        map_location=device,
+    )
     model = model.to(device)
     model.eval()
 
