@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -5,6 +6,7 @@ import torch
 import torch.nn as nn
 from scipy import linalg
 from torch.utils.data import DataLoader
+from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torchvision.models import Inception_V3_Weights, inception_v3
 
@@ -12,11 +14,13 @@ from tqdm import tqdm
 
 from vit.data.transforms import TransformFashionMNIST
 
-
 def load_backbone_processor(model_name: str = "inception"):
     processor_by_model = {
         "inception": Inception_V3_Weights.DEFAULT.transforms(),
-        "fashion-mnist_cnn": TransformFashionMNIST.eval
+        "fashion-mnist_cnn": transforms.Compose([
+            transforms.Grayscale(num_output_channels=1),
+            TransformFashionMNIST.eval,
+        ])
     }
 
     return processor_by_model[model_name]
@@ -31,21 +35,57 @@ f64 = torch.float64
 
 
 class FID:
-    def __init__(self, feature_size: int = 2048, model_backbone: str = "inception"):
-        self.model_backbone = model_backbone
-        self.feature_size = feature_size
+    def __init__(
+        self,
+        feature_size: int | None = None,
+        model_backbone: str = "inception",
+        feature_extractor: nn.Module | None = None,
+        processor: Callable | None = None,
+        device: str | torch.device | None = None,
+    ):
+        """Create a Fréchet distance calculator.
 
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        A manually supplied ``feature_extractor`` must return one two-dimensional
+        tensor of shape ``(batch_size, feature_size)``. Checkpoint loading and
+        model construction intentionally stay outside this class so that they
+        can be controlled by the evaluation config.
+        """
+        self.model_backbone = model_backbone
+        self.device = torch.device(
+            device or ("cuda" if torch.cuda.is_available() else "cpu")
+        )
 
         # for simplicity we simply remove the fc layers. However for g-FID we would
         # import the inception architecture and modify the forward step
-        if model_backbone == "inception":
+        if feature_extractor is not None:
+            if feature_size is None:
+                raise ValueError(
+                    "feature_size is required when supplying a feature_extractor"
+                )
+            self.model = feature_extractor
+        elif model_backbone == "inception":
+            feature_size = 2048 if feature_size is None else feature_size
+            if feature_size != 2048:
+                raise ValueError("The Inception v3 backbone has feature_size=2048")
             self.model = inception_v3(weights=Inception_V3_Weights.DEFAULT)
             self.model.fc = nn.Identity()
-            self.model = self.model.to(self.device)
-            self.model.eval()
         else:
-            raise NotImplementedError(":(")
+            raise ValueError(
+                f"Backbone {model_backbone!r} requires a feature_extractor"
+            )
+
+        self.feature_size = feature_size
+        self.model = self.model.to(self.device)
+        self.model.eval()
+        if processor is not None:
+            self.processor = processor
+        else:
+            try:
+                self.processor = load_backbone_processor(model_backbone)
+            except KeyError as error:
+                raise ValueError(
+                    f"A processor is required for backbone {model_backbone!r}"
+                ) from error
 
         self.fake_samples = 0
         self.real_samples = 0
@@ -105,12 +145,29 @@ class FID:
 
         self._update_mode(mu_merged, prod_merged, total, mode)
 
+    def _extract_features(self, x: torch.Tensor) -> torch.Tensor:
+        features = self.model(x.to(self.device))
+
+        if features.ndim != 2:
+            raise ValueError(
+                "feature_extractor output must have shape "
+                f"(batch_size, feature_size), got {tuple(features.shape)}"
+            )
+        
+        if features.shape[1] != self.feature_size:
+            raise ValueError(
+                f"Expected {self.feature_size} features per sample, "
+                f"got {features.shape[1]}"
+            )
+        
+        return features
+
     def compute_features(self, data_loader):
         features = []
-        
+
         with torch.no_grad():
-            for x, y in data_loader:
-                features.append(self.model(x).detach().cpu())
+            for x, _ in data_loader:
+                features.append(self._extract_features(x).detach().cpu())
 
         return torch.cat(features, dim=0)
 
@@ -194,9 +251,8 @@ class FID:
         self, folder_real: Path, folder_fake: Path, batch_size: int = 128
     ) -> torch.Tensor:
         # load the images using PIL
-        transform_fn = load_backbone_processor(self.model_backbone)
-        ds_real = ImageFolder(folder_real, transform=transform_fn)
-        ds_fake = ImageFolder(folder_fake, transform=transform_fn)
+        ds_real = ImageFolder(folder_real, transform=self.processor)
+        ds_fake = ImageFolder(folder_fake, transform=self.processor)
 
         data_loader_real = DataLoader(
             ds_real,
@@ -210,15 +266,13 @@ class FID:
         print("Computing real features")
         with torch.no_grad():
             for x, _ in tqdm(data_loader_real):
-                x = x.to(self.device)
-                feat = self.model(x)
+                feat = self._extract_features(x)
                 self.feature_statistics(feat, "real")
 
         print("Computing fake features")
         with torch.no_grad():
             for x, _ in tqdm(data_loader_fake):
-                x = x.to(self.device)
-                feat = self.model(x)
+                feat = self._extract_features(x)
                 self.feature_statistics(feat, "fake")
 
         print("Returning FID: ")
@@ -230,11 +284,11 @@ class FID:
         #! this will definetly cause some ood issues since we need to keep track
         #! of the features. We should move all the results to cpu after finishing
         #! the calculation.
+        # todo: rest memory consumption and check if this is really a problem
 
         # load the images using PIL
-        transform_fn = load_backbone_processor(self.model_backbone)
-        ds_real = ImageFolder(folder_real, transform=transform_fn)
-        ds_fake = ImageFolder(folder_fake, transform=transform_fn)
+        ds_real = ImageFolder(folder_real, transform=self.processor)
+        ds_fake = ImageFolder(folder_fake, transform=self.processor)
 
         loader_real = DataLoader(ds_real, batch_size)
         loader_fake = DataLoader(ds_fake, batch_size)
