@@ -1,8 +1,8 @@
 batch_size: 128
-aseed: 1
+seed: 1
 
 eval:
-  generation_batch_size: 64
+  generation_batch_size: 128
   generation_samples: 1000
   preview_count: 5
   checkpoint_path: runs/4f065c86-4a19-4401-891c-b7094f71ad31/checkpoint.pt
@@ -15,6 +15,11 @@ eval:
   # image_dataset: True
 
   generation_id: 14c767eb-91f3-441e-9972-e7cd3a3a2a3b
+
+generation:
+  samples: 1000
+  batch_size: 128
+  guidance: 2.0
 
 data:
   n_classes: 10

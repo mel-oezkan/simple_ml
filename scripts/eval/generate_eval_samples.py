@@ -46,13 +46,13 @@ def generate_samples(cfg, save_dir: Path | None = None) -> None:
                 for batch_index in tqdm(
                     range(
                         0, 
-                        cfg.eval.generation_samples, 
-                        cfg.eval.generation_batch_size
+                        cfg.generation.samples, 
+                        cfg.generation.batch_size
                     ),
                     desc=f"Generating samples for class {class_index}",
                 ):
                     labels = torch.full(
-                        (cfg.eval.generation_batch_size,),
+                        (cfg.generation.batch_size,),
                         class_index,
                         dtype=torch.long,
                         device=device,
@@ -62,6 +62,7 @@ def generate_samples(cfg, save_dir: Path | None = None) -> None:
                         n=labels.shape[0],
                         device=torch.device(device),
                         y=labels,
+                        guidance_scale=cfg.generation.get("guidance", 1.0),
                     )
 
                     # Copy before queueing so the worker never touches CUDA state.
