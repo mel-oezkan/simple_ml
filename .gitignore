@@ -2,7 +2,7 @@
 *.ipynb
 
 denoised_samples-*.png
-data/
+/data/
 runs/
 outputs/
 
