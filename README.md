@@ -14,10 +14,10 @@ uv run modal run modal_train.py
 However to utilize the hydra configs we added an additional flag `--overrides`. Using this flag the existing config is overwritten similar to how it happens when usign hydra noramlly
 
 ```Python
-uv run modal run modal_train.py --overrides "molde.n_blocks=12 batch_size=512"
+uv run modal run modal_apps/train.py --overrides "molde.n_blocks=12 batch_size=512"
 ```
 
-## Evaluation
+## Evaluation   
 
 Download the ImageNet-10K dataset into the repository's ignored `data/` directory:
 
@@ -31,6 +31,24 @@ Extract it with:
 
 ```bash
 unzip data/imagenet-10k.zip -d data/imagenet-10k
+```
+## Testing
+For the testing we seperated the training into 3 categories: "gpu", "integration" and "basic". For the first two tests we need to spin up a modal container and run them there. To do so we created `modal_test.py`.
+For the _basic_ test you can simply run the following command:
+```
+uv run pytest -m "not gpu and not integration" 
+```
+
+For the modal dependent evaluation you need to run any of the following commands.
+```
+uv run modal run modal_apps/test.py --suite basic
+uv run modal run modal_apps/test.py --suite gpu
+uv run modal run modal_apps/test.py --suite integration
+uv run modal run modal_apps/test.py --suite all
+```
+
+```
+uv run python -m scripts.visualize.plot_training \
 ```
 
 
