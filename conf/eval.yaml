@@ -1,11 +1,18 @@
 batch_size: 128
+aseed: 1
 
 eval:
-  generation_batch_size: 10
-  checkpoint_path: runs/a58c1482-067e-4d84-beea-2fd9e6a3cbc6/checkpoint.pt
+  generation_batch_size: 64
+  generation_samples: 1000
+  preview_count: 5
+  checkpoint_path: runs/4f065c86-4a19-4401-891c-b7094f71ad31/checkpoint.pt
+
+  classifier: runs/classifier_experiments/models/cnn/C3/best.pt
 
   # root: data/imagenet-10k/imagenet_subtrain # data/imagenet-10k/imagenet_subtrain
   # image_dataset: True
+
+  generation_id: 14c767eb-91f3-441e-9972-e7cd3a3a2a3b
 
 data:
   n_classes: 10
