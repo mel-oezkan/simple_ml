@@ -164,7 +164,7 @@ def train(
         )
 
         mean_test_loss = None
-        if not cfg.debug.get("skip_test", False):
+        if not cfg.debug.active and not cfg.debug.get("skip_test", False):
             mean_test_loss = run_test(model, test_dataloader, criterion, device)
 
         losses.append(
