@@ -62,16 +62,16 @@ def load_checkpoint(cfg: DictConfig, device: str):
     model.load_state_dict(checkpoint["model"])
     model = model.to(device)
 
-    if cfg.training.get("compile", False):
+    if checkpoint_cfg.training.get("compile", False):
         model.diff_model = torch.compile(model.diff_model)
 
-    ema = EMA(model, cfg.ema.decay, current_step=checkpoint["ema"]["steps"])
+    ema = EMA(model, checkpoint_cfg.ema.decay, current_step=checkpoint["ema"]["steps"])
     ema.shadow = {
         name: param.to(device)
         for name, param in checkpoint["ema"]["params"].items()
     }
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=checkpoint_cfg.learning_rate)
     optimizer.load_state_dict(checkpoint["optimizer"])
 
     return model, ema, optimizer
