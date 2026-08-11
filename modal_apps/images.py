@@ -13,7 +13,7 @@ base_image = (
     modal.Image.from_registry(f"nvidia/cuda:{CUDA_TAG}", add_python="3.12")
     .apt_install("gcc", "g++", "python3-dev")
     .pip_install("torch>=2.13.0", "torchvision>=0.28.0")
-    .pip_install("einops", "hydra-core", "matplotlib", "nanoid", "tqdm")
+    .pip_install("einops", "hydra-core", "matplotlib", "nanoid", "tqdm", "scipy")
  
 )
 
