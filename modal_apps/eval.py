@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 import modal
-from nanoid import generate
 
 from modal_apps.images import PROJECT_ROOT, ml_image
 from modal_apps.resources import RUNS_PATH, runs_volume
@@ -19,33 +18,44 @@ hours = 2
 )
 def modal_runner(
     overrides: list[str] | None = None
-) -> list[tuple[str, bytes]]:
-    """Train on an L4 and hand the run artifacts back to the caller."""
+) -> str:
+    """Evaluate a run and persist its result in the runs volume."""
     from hydra import compose, initialize
     from scripts.eval import eval_model
 
     with initialize(version_base=None, config_path="conf"):
         cfg = compose(config_name="eval", overrides=overrides or [])
 
+    # handle the problem of defining path as runs/ instead of /runs/
+    configured_classifier = Path(cfg.eval.classifier)
+    cfg.eval.classifier = str(
+        Path(RUNS_PATH) / configured_classifier.relative_to("runs")
+    )
+
     # extract the run_id from the checkpoint path, which is expected to be in the form
     # /runs/<run_id>/<checkpoint_name>.pt
     configured_checkpoint = Path(cfg.eval.checkpoint_path)
     run_id = configured_checkpoint.parent.name
     
-    run_dir = Path("/runs") / run_id
+    run_dir = Path(RUNS_PATH) / run_id
     result: dict = eval_model(cfg, run_dir)
-    result_bytes = json.dumps(result, indent=2).encode("utf-8")
 
-    return run_dir, ("result.json", result_bytes)
+    result_path = run_dir / "result.json"
+    result_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    runs_volume.commit()
+
+    return result_path.relative_to(RUNS_PATH).as_posix()
 
 
 @app.local_entrypoint()
 def cli(overrides: str = ""):
-    # e.g. modal run modal_train.py --overrides "epochs=5 batch_size=256"
-    run_dir, artifacts = modal_runner.remote(overrides.split() if overrides else [])
+    result_path = modal_runner.remote(overrides.split() if overrides else [])
 
-    run_dir.mkdir(parents=True, exist_ok=True)
-    for name, data in artifacts:
-        (run_dir / name).write_bytes(data)
+    local_path = PROJECT_ROOT / "runs" / result_path
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    with local_path.open("wb") as result_file:
+        for chunk in runs_volume.read_file(result_path):
+            result_file.write(chunk)
 
-    print(f"Wrote {len(artifacts)} artifacts to {run_dir}")
+    print(f"Wrote result to diffusion-runs/{result_path}")
+    print(f"Downloaded result to {local_path}")
