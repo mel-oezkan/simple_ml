@@ -16,6 +16,9 @@ eval:
 
   generation_id: 14c767eb-91f3-441e-9972-e7cd3a3a2a3b
 
+  real_dataset: data/fashion-mnist
+  
+
 generation:
   samples: 1000
   batch_size: 128
