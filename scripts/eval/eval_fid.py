@@ -43,11 +43,17 @@ def eval_fid_test(cfg: DictConfig, real_path: Path, fake_path: Path) -> float:
 def eval_fid(cfg: DictConfig, real_ds: Dataset, fake_ds: Dataset) -> float:
     """Helper function to run the fid eval and store the results"""
     fid = initialize_fid(cfg)
+    
+    loader_options = {
+        "num_workers": cfg.eval.get("num_workers", 4),
+        "pin_memory": fid.device.type == "cuda",
+    }
 
     return fid.frechet_from_dataset(
         ds_real=real_ds,
         ds_fake=fake_ds,
         batch_size=cfg.batch_size,
+        loader_options=loader_options
     )
 
 
