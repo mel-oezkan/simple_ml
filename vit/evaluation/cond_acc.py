@@ -1,13 +1,9 @@
 from pathlib import Path
 
-import numpy as np
 import torch
 from omegaconf import DictConfig
-from torch.utils.data import DataLoader
-from torchvision import transforms
-from torchvision.datasets import ImageFolder
+from torch.utils.data import DataLoader, Dataset
 
-from vit.evaluation.fid import load_backbone_processor
 from vit.models.classifier import load_cnn_classifier
 
 
@@ -41,11 +37,10 @@ def conditioned_acc(cfg, labels: torch.Tensor, predictions: torch.Tensor):
 
 
 def classifier_evaluation(
-    cfg: DictConfig, 
-    classifier_path: Path, 
-    generated_image_path: Path,
-    transform: transforms.Compose = None
-) -> tuple[float, dict[int, float], np.ndarray]:
+    cfg: DictConfig,
+    classifier_path: Path,
+    generated_dataset: Dataset,
+) -> tuple[float, dict[int, float | str], list[list[int]]]:
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     model = load_cnn_classifier(
@@ -56,17 +51,16 @@ def classifier_evaluation(
     model = model.to(device)
     model.eval()
 
-    ds_generated = ImageFolder(
-        generated_image_path,
-        transform=transform,
-    )
-
     data_loader_generated = DataLoader(
-        ds_generated,
+        generated_dataset,
         cfg.batch_size,
     )
 
-    confusion_mat = torch.zeros((cfg.data.n_classes, cfg.data.n_classes)).to(device)
+    confusion_mat = torch.zeros(
+        (cfg.data.n_classes, cfg.data.n_classes),
+        dtype=torch.long,
+        device=device,
+    )
     with torch.no_grad():
         for x, y in data_loader_generated:
             x, y = x.to(device), y.to(device)
@@ -89,7 +83,11 @@ def classifier_evaluation(
             correct / per_class_total if per_class_total > 0 else "N/A"
         )
 
-    return total_correct / len(ds_generated), per_class_acc, confusion_mat.cpu().numpy().tolist()
+    return (
+        total_correct / len(generated_dataset),
+        per_class_acc,
+        confusion_mat.cpu().tolist(),
+    )
 
 
 if __name__ == "__main__":
