@@ -3,6 +3,8 @@ from pathlib import Path
 import hydra
 from omegaconf import DictConfig
 
+from torch.utils.data import Dataset
+
 from vit.evaluation.fid import FID
 from vit.models.classifier import (
     CNNFeatureExtractor,
@@ -28,23 +30,32 @@ def initialize_fid(cfg: DictConfig) -> FID:
     raise ValueError(f"Unknown FID backbone: {model_backbone!r}")
 
 
-def eval(cfg: DictConfig):
+def eval_fid_test(cfg: DictConfig, real_path: Path, fake_path: Path) -> float:
     """Helper function to run the fid eval and store the results"""
     fid = initialize_fid(cfg)
-    if cfg.data.image_dataset:
-        fid_distance = fid.frechet_distance_from_folder(
-            folder_real=cfg.data.root,
-            folder_fake=cfg.data.root,
-        )
 
-        print(fid_distance)
+    return fid.frechet_distance_from_folder(
+        folder_real=real_path,
+        folder_fake=fake_path,
+    )
 
-    else: 
-        raise NotImplementedError("Dataset needs to be a ImageDataset and image_dataset has to be True in the config")
+
+def eval_fid(cfg: DictConfig, real_ds: Dataset, fake_ds: Dataset) -> float:
+    """Helper function to run the fid eval and store the results"""
+    fid = initialize_fid(cfg)
+
+    return fid.frechet_from_dataset(
+        ds_real=real_ds, 
+        ds_fake=fake_ds,
+        batch_size=cfg.eval.batch_size
+    )
+
 
 @hydra.main(version_base=None, config_path="../../conf", config_name="eval")
 def main(cfg: DictConfig):
-    eval(cfg)
+    # todo: check if this is neccessary
+    print("Running FID evaluation... not the correct fid")
+    eval_fid_test(cfg)
 
 
 if __name__ == "__main__":
