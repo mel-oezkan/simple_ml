@@ -259,9 +259,10 @@ class FID:
             feat = self._extract_features(x)
             self.feature_statistics(feat, mode=mode)
 
-    def frechet_from_dataset(self, ds_real, ds_fake, batch_size):
-        data_loader_real = DataLoader(ds_real, batch_size)
-        data_loader_fake = DataLoader(ds_fake, batch_size)
+    def frechet_from_dataset(self, ds_real, ds_fake, batch_size, loader_options={}):
+       
+        data_loader_real = DataLoader(ds_real, batch_size, **loader_options)
+        data_loader_fake = DataLoader(ds_fake, batch_size, **loader_options)
 
         self._compute_statistics(data_loader_real, mode="real")
         self._compute_statistics(data_loader_fake, mode="fake")
@@ -270,16 +271,16 @@ class FID:
         return self.frechet_distance()
 
     def frechet_distance_from_folder(
-        self, folder_real: Path, folder_fake: Path, batch_size: int = 128
+        self, folder_real: Path, folder_fake: Path, batch_size: int = 128, loader_options={}
     ) -> torch.Tensor:
         # load the images using PIL
         ds_real = ImageFolder(folder_real, transform=self.processor)
         ds_fake = ImageFolder(folder_fake, transform=self.processor)
 
-        return self.frechet_from_dataset(ds_real, ds_fake, batch_size=batch_size)
+        return self.frechet_from_dataset(ds_real, ds_fake, batch_size=batch_size, loader_options=loader_options)
 
     def kid_distance_from_folder(
-        self, folder_real: Path, folder_fake: Path, batch_size: int = 128
+        self, folder_real: Path, folder_fake: Path, batch_size: int = 128, loader_options={}
     ) -> torch.Tensor:
         #! this will definetly cause some ood issues since we need to keep track
         #! of the features. We should move all the results to cpu after finishing
@@ -290,8 +291,8 @@ class FID:
         ds_real = ImageFolder(folder_real, transform=self.processor)
         ds_fake = ImageFolder(folder_fake, transform=self.processor)
 
-        loader_real = DataLoader(ds_real, batch_size)
-        loader_fake = DataLoader(ds_fake, batch_size)
+        loader_real = DataLoader(ds_real, batch_size, **loader_options)
+        loader_fake = DataLoader(ds_fake, batch_size, **loader_options)
 
         print("Computing real features")
         real_fetures = self.compute_features(loader_real)
