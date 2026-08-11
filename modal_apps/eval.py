@@ -24,8 +24,8 @@ def modal_runner(
     from hydra import compose, initialize
     from scripts.eval import eval_model
 
-    with initialize(version_base=None, config_path="eval"):
-        cfg = compose(config_name="config", overrides=overrides or [])
+    with initialize(version_base=None, config_path="conf"):
+        cfg = compose(config_name="eval", overrides=overrides or [])
 
     # extract the run_id from the checkpoint path, which is expected to be in the form
     # /runs/<run_id>/<checkpoint_name>.pt
