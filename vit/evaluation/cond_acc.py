@@ -89,7 +89,7 @@ def classifier_evaluation(
             correct / per_class_total if per_class_total > 0 else "N/A"
         )
 
-    return total_correct / len(ds_generated), per_class_acc, confusion_mat.cpu().numpy()
+    return total_correct / len(ds_generated), per_class_acc, confusion_mat.cpu().numpy().tolist()
 
 
 if __name__ == "__main__":
