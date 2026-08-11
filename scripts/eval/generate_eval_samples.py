@@ -43,16 +43,20 @@ def generate_samples(cfg, save_dir: Path | None = None) -> None:
                 class_dir = save_dir / f"class_{class_index}"
                 class_dir.mkdir(parents=True, exist_ok=True)
 
-                for batch_index in tqdm(
-                    range(
-                        0, 
-                        cfg.generation.samples, 
-                        cfg.generation.batch_size
-                    ),
+                samples_per_class = cfg.generation.samples
+                batch_size = cfg.generation.batch_size
+
+                for batch_start in tqdm(
+                    range(0, samples_per_class, batch_size),
                     desc=f"Generating samples for class {class_index}",
                 ):
+                    current_batch_size = min(
+                        batch_size,
+                        samples_per_class - batch_start,
+                    )
+
                     labels = torch.full(
-                        (cfg.generation.batch_size,),
+                        (current_batch_size,),
                         class_index,
                         dtype=torch.long,
                         device=device,
@@ -72,7 +76,7 @@ def generate_samples(cfg, save_dir: Path | None = None) -> None:
                             save_batch,
                             cpu_samples,
                             class_dir,
-                            batch_index,
+                            batch_start // batch_size,
                         )
                     )
 
