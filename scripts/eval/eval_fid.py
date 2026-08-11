@@ -45,9 +45,9 @@ def eval_fid(cfg: DictConfig, real_ds: Dataset, fake_ds: Dataset) -> float:
     fid = initialize_fid(cfg)
 
     return fid.frechet_from_dataset(
-        ds_real=real_ds, 
+        ds_real=real_ds,
         ds_fake=fake_ds,
-        batch_size=cfg.eval.batch_size
+        batch_size=cfg.batch_size,
     )
 
 

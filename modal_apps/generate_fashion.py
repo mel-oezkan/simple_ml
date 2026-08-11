@@ -13,8 +13,6 @@ from vit.utils.random import set_seed
 app = modal.App("diffusion-vit", image=ml_image)
 
 hours = 2
-
-
 @app.function(
     gpu="L4",
     timeout=hours * 60 * 60,
