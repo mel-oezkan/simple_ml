@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from torch.utils.data import Dataset, Subset
+from torch.utils.data import ConcatDataset, Dataset, Subset
 from torchvision import transforms
 from torchvision.datasets import FashionMNIST, ImageFolder
 
@@ -23,26 +23,35 @@ def handle_real_dataset(cfg) -> Dataset:
     )
 
 
-def _validate_generated_samples(cfg, dataset_path: Path) -> int:
+def _validate_generated_samples(
+    cfg,
+    dataset_path: Path,
+) -> tuple[int, dict[str, int]]:
     """Validate the generated layout and return the requested class size."""
     if not dataset_path.exists():
         raise FileNotFoundError(f"Generated dataset not found at {dataset_path}.")
 
     n_classes = int(cfg.data.n_classes)
     limit = int(cfg.generation.samples)
-    expected_dirs = {f"class_{class_id}" for class_id in range(n_classes)}
+
+    # determine the image quanity per class and validate the layout
+    expected_class_names = [
+        f"class_{class_id}" for class_id in range(n_classes)
+    ]
+    expected_dirs = set(expected_class_names)
     actual_dirs = {path.name for path in dataset_path.iterdir() if path.is_dir()}
     counts = {
-        class_id: len(list((dataset_path / f"class_{class_id}").glob("*.png")))
-        for class_id in range(n_classes)
+        class_name: len(list((dataset_path / class_name).glob("*.png")))
+        for class_name in expected_class_names
     }
 
+    # check for different failure cases
     missing = sorted(expected_dirs - actual_dirs)
     unexpected = sorted(actual_dirs - expected_dirs)
     too_small = any(count < limit for count in counts.values())
     if missing or unexpected or too_small:
         summary = ", ".join(
-            f"class_{class_id}={count:,}" for class_id, count in counts.items()
+            f"{class_name}={count:,}" for class_name, count in counts.items()
         )
         raise ValueError(
             f"Generated dataset validation failed at {dataset_path}. "
@@ -52,24 +61,35 @@ def _validate_generated_samples(cfg, dataset_path: Path) -> int:
             f"Unexpected directories: {unexpected or 'none'}."
         )
 
-    return limit
+    # limit can be reached and will be returned
+    return limit, counts
 
 
-def _limit_per_class(dataset: ImageFolder, limit: int) -> Subset:
-    """Select the first ``limit`` sorted images from every class."""
-    selected = []
-    counts = [0] * len(dataset.classes)
-    for index, class_id in enumerate(dataset.targets):
-        if counts[class_id] < limit:
-            selected.append(index)
-            counts[class_id] += 1
-    return Subset(dataset, selected)
+def _limit_per_class(
+    dataset: ImageFolder,
+    limit: int,
+    class_counts: dict[str, int],
+) -> ConcatDataset:
+    """Select the first 'limit' sorted images from every class."""
+    subsets = []
+    offset = 0
+
+    # ImageFolder stores each class in one contiguous, sorted block.
+    for class_name in dataset.classes:
+        class_size = class_counts[class_name]
+        subsets.append(
+            Subset(dataset, range(offset, offset + limit))
+        )
+        offset += class_size
+
+    return ConcatDataset(subsets)
 
 
 def handle_generated_dataset(cfg, run_dir: Path) -> Dataset:
     """Load a balanced generated dataset capped at the configured class size."""
     dataset_path = run_dir / cfg.eval.generation_id
-    limit = _validate_generated_samples(cfg, dataset_path)
+    limit, class_counts = _validate_generated_samples(cfg, dataset_path)
+
     dataset = ImageFolder(
         dataset_path,
         transforms.Compose(
@@ -79,4 +99,4 @@ def handle_generated_dataset(cfg, run_dir: Path) -> Dataset:
             ]
         ),
     )
-    return _limit_per_class(dataset, limit)
+    return _limit_per_class(dataset, limit, class_counts)
