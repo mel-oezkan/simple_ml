@@ -49,6 +49,9 @@ uv run modal run modal_apps/test.py --suite all
 
 ```
 uv run python -m scripts.visualize.plot_training \
+
+uv run modal run modal_apps/generate_fahion.py \
+  --overrides "eval.preview_count=10"
 ```
 
 
@@ -64,3 +67,20 @@ uv run python -m scripts.visualize.plot_training \
 
 ## Possible Problems
 - When loading the 
+
+## Modal Utils
+Uploading files to modal:
+```
+uv run modal volume put \
+  diffusion-runs \
+  runs/classifier_experiments/models/cnn/C3/best.pt \
+  runs/classifier_experiments/models/cnn/C3/best.pt
+```
+
+```
+
+uv run modal volume get \
+  diffusion-runs \
+  4f065c86-4a19-4401-891c-b7094f71ad31/result.json \
+  runs/4f065c86-4a19-4401-891c-b7094f71ad31/result.json
+```
