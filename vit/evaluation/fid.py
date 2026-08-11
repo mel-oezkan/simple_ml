@@ -14,13 +14,16 @@ from tqdm import tqdm
 
 from vit.data.transforms import TransformFashionMNIST
 
+
 def load_backbone_processor(model_name: str = "inception"):
     processor_by_model = {
         "inception": Inception_V3_Weights.DEFAULT.transforms(),
-        "fashion-mnist_cnn": transforms.Compose([
-            transforms.Grayscale(num_output_channels=1),
-            TransformFashionMNIST.eval,
-        ])
+        "fashion-mnist_cnn": transforms.Compose(
+            [
+                transforms.Grayscale(num_output_channels=1),
+                TransformFashionMNIST.eval,
+            ]
+        ),
     }
 
     return processor_by_model[model_name]
@@ -153,13 +156,13 @@ class FID:
                 "feature_extractor output must have shape "
                 f"(batch_size, feature_size), got {tuple(features.shape)}"
             )
-        
+
         if features.shape[1] != self.feature_size:
             raise ValueError(
                 f"Expected {self.feature_size} features per sample, "
                 f"got {features.shape[1]}"
             )
-        
+
         return features
 
     def compute_features(self, data_loader):
@@ -247,6 +250,25 @@ class FID:
 
         return real_term + fake_term - 2.0 * mixed_term
 
+    @torch.no_grad()
+    def _compute_statistics(
+        self, data_loader: DataLoader, mode: str = "real"
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        print(f"Computing {mode} features")
+        for x, _ in tqdm(data_loader):
+            feat = self._extract_features(x)
+            self.feature_statistics(feat, mode=mode)
+
+    def frechet_from_dataset(self, ds_real, ds_fake, batch_size):
+        data_loader_real = DataLoader(ds_real, batch_size)
+        data_loader_fake = DataLoader(ds_fake, batch_size)
+
+        self._compute_statistics(data_loader_real, mode="real")
+        self._compute_statistics(data_loader_fake, mode="fake")
+
+        print("Returning FID: ")
+        return self.frechet_distance()
+
     def frechet_distance_from_folder(
         self, folder_real: Path, folder_fake: Path, batch_size: int = 128
     ) -> torch.Tensor:
@@ -254,29 +276,7 @@ class FID:
         ds_real = ImageFolder(folder_real, transform=self.processor)
         ds_fake = ImageFolder(folder_fake, transform=self.processor)
 
-        data_loader_real = DataLoader(
-            ds_real,
-            batch_size,
-        )
-        data_loader_fake = DataLoader(
-            ds_fake,
-            batch_size,
-        )
-
-        print("Computing real features")
-        with torch.no_grad():
-            for x, _ in tqdm(data_loader_real):
-                feat = self._extract_features(x)
-                self.feature_statistics(feat, "real")
-
-        print("Computing fake features")
-        with torch.no_grad():
-            for x, _ in tqdm(data_loader_fake):
-                feat = self._extract_features(x)
-                self.feature_statistics(feat, "fake")
-
-        print("Returning FID: ")
-        return self.frechet_distance()
+        return self.frechet_from_dataset(ds_real, ds_fake, batch_size=batch_size)
 
     def kid_distance_from_folder(
         self, folder_real: Path, folder_fake: Path, batch_size: int = 128
@@ -295,9 +295,7 @@ class FID:
 
         print("Computing real features")
         real_fetures = self.compute_features(loader_real)
-
-        print("Computing fake features")
         fake_fetures = self.compute_features(loader_fake)
 
-        print("Returning FID: ")
+        print("Returning KID: ")
         return self.compute_kid(real_fetures, fake_fetures)
