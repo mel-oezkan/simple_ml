@@ -21,6 +21,7 @@ training:
   compile: True
   from_checkpoint: False
   checkpoint_path: "runs/a58c1482-067e-4d84-beea-2fd9e6a3cbc6/checkpoint.pt"
+  num_bins: 20
 
 ema:
   decay: 0.999

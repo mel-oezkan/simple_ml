@@ -1,6 +1,6 @@
 
 #! should be used for the image generation and save the files in the respective folders
-fashion_mnis = {
+fashion_mnist_mappings = {
   0: 'T-shirt/top',
   1: 'Trouser',
   2: 'Pullover',
