@@ -15,104 +15,77 @@ from tqdm import tqdm
 
 from vit.model_utils import prepare_model, save_checkpoint
 from vit.utils.random import set_seed
+from vit.data.utils import load_datasets, prepare_dataloaders
+from vit.data.class_mappings import fashion_mnist_mappings
 
 
-def load_datasets(cfg):
-    """Helper function to load the FashionMNIST dataset."""
-
-    training_data = datasets.FashionMNIST(
-        root="data",
-        train=True,
-        download=True,
-        transform=v2.Compose(
-            [
-                v2.ToImage(),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize((0.5,), (0.5,)),
-            ]
-        ),
-    )
-
-    if cfg.debug.active and cfg.debug.debug_n:
-        training_data = Subset(
-            training_data, range(max(cfg.debug.debug_n, cfg.batch_size))
-        )
-
-    test_data = datasets.FashionMNIST(
-        root="data",
-        train=False,
-        download=True,
-        transform=v2.Compose(
-            [
-                v2.ToImage(),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize((0.5,), (0.5,)),
-            ]
-        ),
-    )
-
-    return training_data, test_data
 
 
-def prepare_dataloaders(cfg, train_ds, test_ds):
-    """Helper function to prepare the dataloaders for training and testing."""
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=cfg.batch_size,
-        shuffle=True,
-        num_workers=cfg.get("num_workers", 4),
-        drop_last=True,
-    )
-
-    test_loader = DataLoader(
-        test_ds,
-        batch_size=cfg.batch_size,
-        shuffle=False,
-        num_workers=cfg.get("num_workers", 4),
-    )
-
-    return train_loader, test_loader
-
-
-def run_train(model, ema, dataloader, optimizer, criterion, device):
+def run_train(model, ema, dataloader, optimizer, criterion, device, num_bins=20):
     """Helper function to perform a single training step."""
     model.train()
     total_loss = 0
+
+    bin_losses = torch.zeros(num_bins, dtype=torch.float32)
+    bin_counts = torch.zeros(num_bins, dtype=torch.float32)
+
     for x, y in tqdm(dataloader, desc="Training: ", leave=False):
         x, y = x.to(device), y.to(device)
         optimizer.zero_grad()
 
         noise = torch.randn_like(x)
-        pred_noise = model(x, noise, y)
+        pred_noise, timesteps = model(x, noise, y) # dim: (B, C, H, W)
 
         loss = criterion(pred_noise, noise)
         loss.backward()
         optimizer.step()
         ema.update(model)
 
+        # reduce loss to (B)
+        per_sample_loss = ((pred_noise - noise) ** 2).mean(dim=(1, 2, 3))
+        bin_idx = (timesteps * num_bins) // model.T # generate the indices for the bins (0 to num_bins-1)
+
+        # update
+        bin_losses.index_add_(0, bin_idx, per_sample_loss.detach())
+        bin_counts.index_add_(0, bin_idx, torch.ones_like(per_sample_loss))
+
         total_loss += loss.item()
 
-    return total_loss / len(dataloader)
+    # prevent division by zero
+    mean_bin_loss = bin_losses / bin_counts.clamp_min(1)
+    return total_loss / len(dataloader), mean_bin_loss
 
 
-def run_test(model, dataloader, criterion, device):
+def run_test(model, dataloader, criterion, device, num_bins=20):
     """Helper function to perform a single test step."""
     model.eval()
     total_loss = 0
+
+    bin_losses = torch.zeros(num_bins, dtype=torch.float32)
+    bin_counts = torch.zeros(num_bins, dtype=torch.float32)
+
     with torch.no_grad():
         for x, y in dataloader:
             x, y = x.to(device), y.to(device)
             noise = torch.randn_like(x)
-            pred_noise = model(x, noise, y)
+            pred_noise, timesteps = model(x, noise, y)
 
             loss = criterion(pred_noise, noise)
             total_loss += loss.item()
 
-    return total_loss / len(dataloader)
+            per_sample_loss = ((pred_noise - noise) ** 2).mean(dim=(1, 2, 3))
+            bin_idx = (timesteps * num_bins) // model.T
+            bin_losses.index_add_(0, bin_idx, per_sample_loss.detach())
+            bin_counts.index_add_(0, bin_idx, torch.ones_like(per_sample_loss))
+            
+    mean_bin_loss = bin_losses / bin_counts.clamp_min(1)
+    return total_loss / len(dataloader), mean_bin_loss
 
 
 def generate_samples(model, device, plot_path):
+    """Simple helper function to generate fashionMNIST samples"""
     model.eval()
+
     # show the reverse diffusion process for a sample image
     labels = torch.tensor([3, 6, 9], dtype=torch.long, device=device)
     denoised_sample = model.sample(n=3, device=torch.device(device), y=labels)
@@ -122,7 +95,9 @@ def generate_samples(model, device, plot_path):
         plt.subplot(1, 3, i + 1)
         image = denoised_sample[i, 0].add(1).div(2).clamp(0,1)
         plt.imshow(image.cpu(), cmap="gray", vmin=0, vmax=1)
-        plt.title(f"Label: {((i + 1) * 3)}")
+        plt.title(f"Label: {fashion_mnist_mappings[labels[i].item()]}") # map to the class name
+        #todo: hardcoded to fashionMNIST (not a current problem since we only support that dataset)
+
         plt.axis("off")
 
     plt.savefig(plot_path)
@@ -144,6 +119,10 @@ def train(
     run_dir.mkdir(parents=True, exist_ok=True)
     set_seed(cfg.seed)
 
+    # write the config for the run 
+    with open(run_dir / "config.json", "w") as f:
+        json.dump(cfg, f, indent=2)
+
     train_data, test_data = load_datasets(cfg)
     train_dataloader, test_dataloader = prepare_dataloaders(cfg, train_data, test_data)
 
@@ -159,19 +138,21 @@ def train(
     criterion = nn.MSELoss()
 
     for epoch in range(cfg.epochs):
-        mean_loss = run_train(
-            model, ema, train_dataloader, optimizer, criterion, device
+        mean_loss, mean_bin_loss = run_train(
+            model, ema, train_dataloader, optimizer, criterion, device, cfg.training.num_bins
         )
 
         mean_test_loss = None
         if not cfg.debug.active and not cfg.debug.get("skip_test", False):
-            mean_test_loss = run_test(model, test_dataloader, criterion, device)
+            mean_test_loss, mean_test_bin_loss = run_test(model, test_dataloader, criterion, device, cfg.training.num_bins)
 
         losses.append(
             {
                 "epoch": epoch + 1,
                 "mean_loss": mean_loss,
+                "mean_bin_loss": mean_bin_loss.tolist(),
                 "mean_test_loss": mean_test_loss,
+                "mean_test_bin_loss": mean_test_bin_loss.tolist() if mean_test_bin_loss is not None else None,
             }
         )
 
