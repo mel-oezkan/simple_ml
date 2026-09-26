@@ -3,7 +3,7 @@ from pathlib import Path
 import modal
 from nanoid import generate
 
-from modal_apps.images import PROJECT_ROOT, REMOTE_CONFIG_PATH, ml_image
+from modal_apps.images import PROJECT_ROOT, ml_image
 from modal_apps.resources import RUNS_PATH, runs_volume
 
 app = modal.App("diffusion-vit", image=ml_image)
@@ -19,7 +19,7 @@ def modal_train(
 
     with initialize(
         version_base=None, 
-        config_path=REMOTE_CONFIG_PATH
+        config_path="conf"
     ):
         cfg = compose(config_name="config", overrides=overrides or [])
 
