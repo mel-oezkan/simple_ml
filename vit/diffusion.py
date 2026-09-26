@@ -12,26 +12,6 @@ def linear_schedule(steps: int, start: float = 1e-4, end: float = 2e-2):
     return beta, alpha, alpha_bar
 
 
-# ! incorrect
-# def cosine_schedule(steps: int, s: float = 0.008):
-#     """Compute the cosine schedule for diffusion models.
-#     Args:
-#         steps (int): Number of diffusion steps.
-#         s (float): Small offset to prevent singularities.
-#     """
-#     t = torch.linspace(0, steps, steps + 1) / steps
-
-#     cycle = math.pi / 2
-#     period = 1 + s
-#     f_t = torch.cos(((t + s) / period) * cycle) ** 2
-#     alpha_bar = f_t[1:] / f_t[:-1]
-
-#     beta = 1 - alpha_bar
-#     alpha = 1 - beta
-
-#     return beta, alpha, alpha_bar
-
-
 class Diffusion(nn.Module):
     def __init__(
         self,
@@ -145,12 +125,13 @@ class Diffusion(nn.Module):
             torch.Tensor: predicted noise
         """
 
-        t = torch.randint(0, self.T, (x_0.shape[0],), device=x_0.device).long()
+        # sample B independent timesteps 
+        timesteps = torch.randint(0, self.T, (x_0.shape[0],), device=x_0.device).long()
 
         # simplify the ddpm equation 
-        u = self.extract(self.alpha_bar_sqrt, t)
-        v = self.extract(self.one_minus_alpha_bar_sqrt, t)
+        u = self.extract(self.alpha_bar_sqrt, timesteps)
+        v = self.extract(self.one_minus_alpha_bar_sqrt, timesteps)
 
         x_t = u * x_0 + v * noise
 
-        return self.diff_model(x_t, t, y)
+        return self.diff_model(x_t, timesteps, y), timesteps
