@@ -38,10 +38,17 @@ def modal_runner(
     run_id = configured_checkpoint.parent.name
     
     run_dir = Path(RUNS_PATH) / run_id
-    result: dict = eval_model(cfg, run_dir)
+    new_result: dict = eval_model(cfg, run_dir)
 
     result_path = run_dir / "result.json"
-    result_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    results: list[None] = []
+    if result_path.exists():
+        with open(result_path, "r") as result_file:
+            results: list[dict] = json.load(result_file)
+            
+
+    results.append(new_result)
+    result_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
     runs_volume.commit()
 
     return result_path.relative_to(RUNS_PATH).as_posix()
