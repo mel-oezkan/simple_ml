@@ -33,7 +33,7 @@ class Diffusion(nn.Module):
         self.out_channels = out_channels
 
         beta, alpha, alpha_bar = linear_schedule(steps=T)
-        # self.register_buffer("alpha_bar", alpha_bar)
+        self.register_buffer("alpha_bar", alpha_bar)
         self.register_buffer("alpha", alpha)
         self.register_buffer("beta_sqrt", torch.sqrt(beta))
         self.register_buffer("alpha_sqrt", torch.sqrt(alpha))
@@ -71,45 +71,45 @@ class Diffusion(nn.Module):
 
         return self.reverse(x_T, y=y, guidance_scale=guidance_scale)
 
+    @torch.no_grad()
     def reverse(self, x_curr: torch.Tensor, y=None, guidance_scale=1.0) -> torch.Tensor:
         assert x_curr.dim() == 4, "x_curr must be a 4D tensor (B, C, H, W)"
 
-        with torch.no_grad():
-            # ddpm diffusion steps
-            for t in torch.arange(self.T - 1, -1, -1, dtype=torch.long):
+        # ddpm diffusion steps
+        for t in torch.arange(self.T - 1, -1, -1, dtype=torch.long):
 
-                # final output
-                if t == 0:
-                    z = torch.zeros_like(x_curr)
-                else:
-                    z = torch.randn_like(x_curr)
+            # final output
+            if t == 0:
+                z = torch.zeros_like(x_curr)
+            else:
+                z = torch.randn_like(x_curr)
 
-                # match the time shape to the input batch
-                batched_t = torch.full(
-                    (x_curr.shape[0],), t, 
-                    dtype=torch.long, 
-                    device=x_curr.device
-                )
+            # match the time shape to the input batch
+            batched_t = torch.full(
+                (x_curr.shape[0],), t, 
+                dtype=torch.long, 
+                device=x_curr.device
+            )
 
-                s = 1 / self.extract(self.alpha_sqrt, batched_t)
-                frac = (1 - self.extract(self.alpha, batched_t)) / self.extract(
-                    self.one_minus_alpha_bar_sqrt, batched_t
-                )
+            s = 1 / self.extract(self.alpha_sqrt, batched_t)
+            frac = (1 - self.extract(self.alpha, batched_t)) / self.extract(
+                self.one_minus_alpha_bar_sqrt, batched_t
+            )
 
-                sigma = self.extract(self.beta_sqrt, batched_t)
+            sigma = self.extract(self.beta_sqrt, batched_t)
 
-                if y is not None and guidance_scale != 1.0:
-                    eps_cond = self.diff_model(x_curr, batched_t, y)
-                    eps_uncond = self.diff_model(x_curr, batched_t, None)
+            if y is not None and guidance_scale != 1.0:
+                eps_cond = self.diff_model(x_curr, batched_t, y)
+                eps_uncond = self.diff_model(x_curr, batched_t, None)
 
-                    eps = eps_uncond + guidance_scale * (eps_cond - eps_uncond)
+                eps = eps_uncond + guidance_scale * (eps_cond - eps_uncond)
 
-                else:
-                    eps = self.diff_model(x_curr, batched_t, y)
+            else:
+                eps = self.diff_model(x_curr, batched_t, y)
 
-                x_curr = (
-                    s * (x_curr - frac * eps) + sigma * z
-                )
+            x_curr = (
+                s * (x_curr - frac * eps) + sigma * z
+            )
 
         return x_curr
 
