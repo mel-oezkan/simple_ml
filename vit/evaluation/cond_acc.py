@@ -4,7 +4,7 @@ import torch
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader, Dataset
 
-from vit.models.classifier import load_cnn_classifier
+from vit.models.classifier import load_mlp_classifier
 
 
 def acc(pred, label):
@@ -43,7 +43,7 @@ def classifier_evaluation(
 ) -> tuple[float, dict[int, float | str], list[list[int]]]:
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    model = load_cnn_classifier(
+    model = load_mlp_classifier(
         classifier_path,
         num_classes=cfg.data.n_classes,
         map_location=device,
