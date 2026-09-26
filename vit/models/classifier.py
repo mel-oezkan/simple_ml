@@ -78,6 +78,23 @@ class CNNFeatureExtractor(nn.Module):
         return self.classifier.forward_features(x)
 
 
+def load_mlp_classifier(
+    checkpoint_path: str | Path,
+    num_classes: int = 10,
+    map_location: str | torch.device = "cpu",
+):
+    checkpoint = torch.load(
+        checkpoint_path,
+        map_location=map_location,
+        weights_only=True,
+    )
+    state_dict = checkpoint.get("model_state_dict", checkpoint)
+    dropout = checkpoint.get("hyperparameters", {}).get("dropout", 0.1)
+
+    model = MLPClassifier(num_classes=num_classes, dropout=dropout)
+    model.load_state_dict(state_dict)
+    return model
+
 def load_cnn_classifier(
     checkpoint_path: str | Path,
     num_classes: int = 10,
