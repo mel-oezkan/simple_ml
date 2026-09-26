@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from nanoid import generate
 import torch
 import torch.nn as nn
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets
 from torchvision.transforms import v2
@@ -26,8 +26,8 @@ def run_train(model, ema, dataloader, optimizer, criterion, device, num_bins=20)
     model.train()
     total_loss = 0
 
-    bin_losses = torch.zeros(num_bins, dtype=torch.float32)
-    bin_counts = torch.zeros(num_bins, dtype=torch.float32)
+    bin_losses = torch.zeros(num_bins, dtype=torch.float32, device=device)
+    bin_counts = torch.zeros(num_bins, dtype=torch.float32, device=device)
 
     for x, y in tqdm(dataloader, desc="Training: ", leave=False):
         x, y = x.to(device), y.to(device)
@@ -36,23 +36,22 @@ def run_train(model, ema, dataloader, optimizer, criterion, device, num_bins=20)
         noise = torch.randn_like(x)
         pred_noise, timesteps = model(x, noise, y) # dim: (B, C, H, W)
 
-        loss = criterion(pred_noise, noise)
+        # reduce loss to (B)
+        per_sample_loss = (pred_noise - noise).square().flatten(1).mean(dim=1)
+        loss = per_sample_loss.mean()
+
         loss.backward()
         optimizer.step()
         ema.update(model)
 
-        # reduce loss to (B)
-        per_sample_loss = ((pred_noise - noise) ** 2).mean(dim=(1, 2, 3))
-        bin_idx = (timesteps * num_bins) // model.T # generate the indices for the bins (0 to num_bins-1)
-
-        # update
+        bin_idx = (timesteps * num_bins) // model.T
         bin_losses.index_add_(0, bin_idx, per_sample_loss.detach())
         bin_counts.index_add_(0, bin_idx, torch.ones_like(per_sample_loss))
 
         total_loss += loss.item()
 
     # prevent division by zero
-    mean_bin_loss = bin_losses / bin_counts.clamp_min(1)
+    mean_bin_loss = (bin_losses / bin_counts.clamp_min(1)).cpu()
     return total_loss / len(dataloader), mean_bin_loss
 
 
@@ -61,8 +60,8 @@ def run_test(model, dataloader, criterion, device, num_bins=20):
     model.eval()
     total_loss = 0
 
-    bin_losses = torch.zeros(num_bins, dtype=torch.float32)
-    bin_counts = torch.zeros(num_bins, dtype=torch.float32)
+    bin_losses = torch.zeros(num_bins, dtype=torch.float32, device=device)
+    bin_counts = torch.zeros(num_bins, dtype=torch.float32, device=device)
 
     with torch.no_grad():
         for x, y in dataloader:
@@ -70,15 +69,15 @@ def run_test(model, dataloader, criterion, device, num_bins=20):
             noise = torch.randn_like(x)
             pred_noise, timesteps = model(x, noise, y)
 
-            loss = criterion(pred_noise, noise)
+            per_sample_loss = (pred_noise - noise).square().flatten(1).mean(dim=1)
+            loss = per_sample_loss.mean()
             total_loss += loss.item()
 
-            per_sample_loss = ((pred_noise - noise) ** 2).mean(dim=(1, 2, 3))
             bin_idx = (timesteps * num_bins) // model.T
             bin_losses.index_add_(0, bin_idx, per_sample_loss.detach())
             bin_counts.index_add_(0, bin_idx, torch.ones_like(per_sample_loss))
             
-    mean_bin_loss = bin_losses / bin_counts.clamp_min(1)
+    mean_bin_loss = (bin_losses / bin_counts.clamp_min(1)).cpu()
     return total_loss / len(dataloader), mean_bin_loss
 
 
@@ -121,7 +120,7 @@ def train(
 
     # write the config for the run 
     with open(run_dir / "config.json", "w") as f:
-        json.dump(cfg, f, indent=2)
+        json.dump(OmegaConf.to_container(cfg, resolve=True), f, indent=2)
 
     train_data, test_data = load_datasets(cfg)
     train_dataloader, test_dataloader = prepare_dataloaders(cfg, train_data, test_data)
@@ -143,7 +142,8 @@ def train(
         )
 
         mean_test_loss = None
-        if not cfg.debug.active and not cfg.debug.get("skip_test", False):
+        mean_test_bin_loss = None
+        if not cfg.debug.active or not cfg.debug.get("skip_test", False):
             mean_test_loss, mean_test_bin_loss = run_test(model, test_dataloader, criterion, device, cfg.training.num_bins)
 
         losses.append(
