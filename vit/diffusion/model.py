@@ -40,7 +40,7 @@ class Diffusion(nn.Module):
         self.register_buffer("alpha_bar_sqrt", torch.sqrt(alpha_bar))
         self.register_buffer("one_minus_alpha_sqrt", torch.sqrt(1 - alpha))
         self.register_buffer("one_minus_alpha_bar_sqrt", torch.sqrt(1 - alpha_bar))
-
+        
         self.diff_model = DiT(
             n_blocks,
             emb_dim,
@@ -69,10 +69,10 @@ class Diffusion(nn.Module):
             n, self.out_channels, self.image_size, self.image_size, device=device
         )
 
-        return self.reverse(x_T, y=y, guidance_scale=guidance_scale)
+        return self.reverse(x_T, y_cond=y, guidance_scale=guidance_scale)
 
     @torch.no_grad()
-    def reverse(self, x_curr: torch.Tensor, y=None, guidance_scale=1.0) -> torch.Tensor:
+    def reverse(self, x_curr: torch.Tensor, y_cond=None, guidance_scale=1.0) -> torch.Tensor:
         assert x_curr.dim() == 4, "x_curr must be a 4D tensor (B, C, H, W)"
 
         # ddpm diffusion steps
@@ -98,14 +98,14 @@ class Diffusion(nn.Module):
 
             sigma = self.extract(self.beta_sqrt, batched_t)
 
-            if y is not None and guidance_scale != 1.0:
-                eps_cond = self.diff_model(x_curr, batched_t, y)
+            if y_cond is not None and guidance_scale != 1.0:
+                eps_cond = self.diff_model(x_curr, batched_t, y_cond)
                 eps_uncond = self.diff_model(x_curr, batched_t, None)
 
                 eps = eps_uncond + guidance_scale * (eps_cond - eps_uncond)
 
             else:
-                eps = self.diff_model(x_curr, batched_t, y)
+                eps = self.diff_model(x_curr, batched_t, y_cond)
 
             x_curr = (
                 s * (x_curr - frac * eps) + sigma * z
