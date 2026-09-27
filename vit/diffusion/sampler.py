@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from vit.diffusion import Diffusion
+from vit.diffusion.model import Diffusion
 
 
 def linear_schedule(steps: int, start: float = 1e-4, end: float = 2e-2):
@@ -20,7 +20,7 @@ class DDPMSampler(nn.Module):
     def __init__(self, Tmodel: Diffusion, eta: float, T: int, image_size: int, out_channels: int):
         super().__init__()
 
-        
+    
 
 
 class DDIMSampler(nn.Module):
@@ -75,7 +75,9 @@ class DDIMSampler(nn.Module):
                 eps = eps_uncond + guidance_scale * (eps_cond - eps_uncond)
 
             else:
-                eps = self.model.diff_model(x_curr, batched_t, None)
+                eps = self.model.diff_model(x_curr, batched_t, y_cond)
+                if not self.model.diff_model.constant_sigma:
+                    eps, _sig = eps
 
             # calculate the new
             sigma_t = (
