@@ -17,10 +17,10 @@ def extract(buffer, timestep):
 
 
 class DDPMSampler(nn.Module):
-    def __init__(self, T):
+    def __init__(self, Tmodel: Diffusion, eta: float, T: int, image_size: int, out_channels: int):
         super().__init__()
 
-        beta, alpha, alpha_bar = linear_schedule(steps=T)
+        
 
 
 class DDIMSampler(nn.Module):
@@ -34,12 +34,12 @@ class DDIMSampler(nn.Module):
         self.image_size = image_size
         self.out_channels = out_channels
 
-    def reverse(self, x0, n_steps):
+    def reverse(self, x_T, y_cond, n_steps, guidance_scale):
         # create the steps and add a last step for ddpm liek schedule
         steps = torch.linspace(self.T - 1, 0, n_steps).long()
         steps = torch.cat([steps, torch.tensor([-1])])
 
-        x_curr = x0
+        x_curr = x_T
 
         for t, t_prev in zip(steps[:-1], steps[1:]):
             # handle the t = -1 cases
@@ -49,18 +49,40 @@ class DDIMSampler(nn.Module):
                 if t_prev >= 0
                 else torch.ones_like(ab)
             )
-            
-            # generate the noise 
-            z = torch.rand_like(x_curr)
+
+            # generate the noise
+            z = torch.randn_like(x_curr)
 
             # get the noise prediction
             batched_t = torch.full(
                 (x_curr.shape[0],), t, dtype=torch.long, device=x_curr.device
             )
-            eps = self.model.diff_model(x_curr, batched_t)
 
-            # calculate the new 
-            sigma_t = self.eta * ((1 - ab_prev) / (1 - ab)).sqrt() * ((1 - ab / ab_prev).sqrt())
+            if y_cond is not None and guidance_scale != 1.0:
+                y_null = torch.full_like(y_cond, self.model.diff_model.n_classes)
+                y_in = torch.cat([y_cond, y_null])
+                x_in = torch.cat([x_curr, x_curr])
+                t_in = torch.cat([batched_t, batched_t])
+
+                if self.model.diff_model.constant_sigma:
+                    eps_cond, eps_uncond = self.model.diff_model(
+                        x_in, t_in, y_in
+                    ).chunk(2)
+                else:
+                    eps_out, _sig = self.model.diff_model(x_in, t_in, y_in)
+                    eps_cond, eps_uncond = eps_out.chunk(2)
+
+                eps = eps_uncond + guidance_scale * (eps_cond - eps_uncond)
+
+            else:
+                eps = self.model.diff_model(x_curr, batched_t, None)
+
+            # calculate the new
+            sigma_t = (
+                self.eta
+                * ((1 - ab_prev) / (1 - ab)).sqrt()
+                * ((1 - ab / ab_prev).sqrt())
+            )
             x_0 = (x_curr - (1 - ab).sqrt() * eps) / ab.sqrt()
             x_curr = (
                 ab_prev.sqrt() * x_0
@@ -71,7 +93,9 @@ class DDIMSampler(nn.Module):
         return x_curr
 
     @torch.no_grad()
-    def sample(self, n: int, n_steps: int, device: str):
+    def sample(
+        self, n: int, n_steps: int, device: str, y=None, guidance_scale: float = 1.0
+    ):
         x_T = torch.randn(
             n,
             self.out_channels,
@@ -80,4 +104,6 @@ class DDIMSampler(nn.Module):
             device=device,
         )
 
-        return self.reverse(x_T, n_steps)
+        return self.reverse(
+            x_T, y_cond=y, n_steps=n_steps, guidance_scale=guidance_scale
+        )
