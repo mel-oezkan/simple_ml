@@ -17,14 +17,14 @@ hours = 2
     },
 )
 def modal_runner(
-    overrides: list[str] | None = None
+    cfg_overrides: list[str] | None = None
 ) -> str:
     """Evaluate a run and persist its result in the runs volume."""
     from hydra import compose, initialize
     from scripts.eval import eval_model
 
     with initialize(version_base=None, config_path="conf"):
-        cfg = compose(config_name="eval", overrides=overrides or [])
+        cfg = compose(config_name="eval", overrides=cfg_overrides or [])
 
     # handle the problem of defining path as runs/ instead of /runs/
     configured_classifier = Path(cfg.eval.classifier)
