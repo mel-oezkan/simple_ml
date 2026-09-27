@@ -24,55 +24,60 @@ class DDPMSampler(nn.Module):
 
 
 class DDIMSampler(nn.Module):
-    def __init__(self, model: Diffusion, steps, eta, T: int):
+    def __init__(
+        self, model: Diffusion, eta: float, T: int, image_size: int, out_channels: int
+    ):
         super().__init__()
         self.model = model
+        self.eta = eta
         self.T = T
-        self.steps = steps
+        self.image_size = image_size
+        self.out_channels = out_channels
 
-    def reverse(self, x0, steps):
-        steps = torch.linspace(self.T - 1, 0, self.steps).long()
+    def reverse(self, x0, n_steps):
+        # create the steps and add a last step for ddpm liek schedule
+        steps = torch.linspace(self.T - 1, 0, n_steps).long()
+        steps = torch.cat([steps, torch.tensor([-1])])
+
         x_curr = x0
 
         for t, t_prev in zip(steps[:-1], steps[1:]):
-            # final output
-            if t == 0:
-                z = torch.zeros_like(x_curr)
-            else:
-                z = torch.randn_like(x_curr)
-
+            # handle the t = -1 cases
             ab = self.model.extract(self.model.alpha_bar, t)
-            ab_prev = self.model.extract(self.model.alpha_bar, t_prev)
+            ab_prev = (
+                self.model.extract(self.model.alpha_bar, t_prev)
+                if t_prev >= 0
+                else torch.ones_like(ab)
+            )
+            
+            # generate the noise 
+            z = torch.rand_like(x_curr)
 
-            noise_scale = ((1 - ab_prev) / (1 - ab)).sqrt * ((1 - ab) / ab_prev).sqrt
-
+            # get the noise prediction
             batched_t = torch.full(
                 (x_curr.shape[0],), t, dtype=torch.long, device=x_curr.device
             )
             eps = self.model.diff_model(x_curr, batched_t)
 
+            # calculate the new 
+            sigma_t = self.eta * ((1 - ab_prev) / (1 - ab)).sqrt() * ((1 - ab / ab_prev).sqrt())
+            x_0 = (x_curr - (1 - ab).sqrt() * eps) / ab.sqrt()
             x_curr = (
-                ab_prev * x_curr
-                + (1 - ab_prev - noise_scale**2).sqrt * eps
-                + noise_scale * z
+                ab_prev.sqrt() * x_0
+                + (1 - ab_prev - sigma_t**2).sqrt() * eps
+                + sigma_t * z
             )
-        
+
         return x_curr
 
     @torch.no_grad()
-    def sample(self, n: int):
-        """Sample from the diffusion model.
-
-        Args:
-            n (int): Number of samples to generate.
-            device (torch.device): Device to run the sampling on.
-            y (torch.Tensor, optional): Class labels for conditional sampling.
-        """
-
+    def sample(self, n: int, n_steps: int, device: str):
         x_T = torch.randn(
             n,
             self.out_channels,
             self.image_size,
             self.image_size,
-            device=self.model.device(),
+            device=device,
         )
+
+        return self.reverse(x_T, n_steps)
