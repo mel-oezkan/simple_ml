@@ -78,9 +78,7 @@ class DDPMSampler(nn.Module):
         return x_T
 
     @torch.no_grad()
-    def sample(
-        self, n_samples: int, device: str, y=None, guidance_scale: float = 1.0
-    ):
+    def sample(self, n_samples: int, device: str, y=None, guidance_scale: float = 1.0):
         x_T = torch.randn(
             n_samples,
             self.out_channels,
@@ -96,11 +94,17 @@ class DDPMSampler(nn.Module):
 
 class DDIMSampler(nn.Module):
     def __init__(
-        self, model: Diffusion, eta: float, image_size: int, out_channels: int
+        self,
+        model: Diffusion,
+        eta: float,
+        n_steps: int,
+        image_size: int,
+        out_channels: int,
     ):
         super().__init__()
         self.model = model
         self.eta = eta
+        self.n_steps = n_steps
         self.T = model.T
         self.image_size = image_size
         self.out_channels = out_channels
@@ -169,11 +173,9 @@ class DDIMSampler(nn.Module):
         return x_curr
 
     @torch.no_grad()
-    def sample(
-        self, n: int, n_steps: int, device: str, y=None, guidance_scale: float = 1.0
-    ):
+    def sample(self, n_samples: int, device: str, y=None, guidance_scale: float = 1.0):
         x_T = torch.randn(
-            n,
+            n_samples,
             self.out_channels,
             self.image_size,
             self.image_size,
@@ -181,5 +183,5 @@ class DDIMSampler(nn.Module):
         )
 
         return self.reverse(
-            x_T, y_cond=y, n_steps=n_steps, guidance_scale=guidance_scale
+            x_T, y_cond=y, n_steps=self.n_steps, guidance_scale=guidance_scale
         )
