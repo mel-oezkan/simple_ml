@@ -3,12 +3,11 @@ import shlex
 from pathlib import Path
 
 import modal
-from nanoid import generate
 
 from modal_apps.images import PROJECT_ROOT, ml_image
 from modal_apps.resources import RUNS_PATH, runs_volume
 from scripts.eval.generate_eval_samples import generate_samples
-from vit.utils.random import set_seed
+from vit.utils.random import get_generationid, set_seed
 
 app = modal.App("diffusion-vit", image=ml_image)
 
@@ -71,7 +70,7 @@ def modal_runner(
 
 @app.local_entrypoint()
 def cli(overrides: str = ""):
-    generation_id = generate()
+    generation_id = get_generationid()
     volume_path, previews = modal_runner.remote(
         generation_id,
         shlex.split(overrides),
