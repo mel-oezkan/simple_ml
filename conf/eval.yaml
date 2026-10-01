@@ -7,12 +7,14 @@ eval:
   # Classifier features produce a domain-specific Fréchet distance, not standard FID.
   fid_backbone: fashion-mnist_cnn
   classifier: runs/classifier_experiments/models/cnn/C3/best.pt
+  # Accuracy uses a separate MLP so it isn't judged by the FID feature network.
+  accuracy_classifier: runs/classifier_experiments/models/mlp/M2/best.pt
 
   # root: data/imagenet-10k/imagenet_subtrain # data/imagenet-10k/imagenet_subtrain
   # image_dataset: True
 
-  # Generation settings are read from <run>/<generation_id>/generation.yaml.
-  generation_id: 5JmzPh2WSBi8J7Fpwk_kt
+  # Generation and sampler settings are read from <run>/<generation_id>/generation_cfg.yaml.
+  generation_id: ??? # pass eval.generation_id=<id> printed by generate_fashion.py
   real_dataset: data/fashion-mnist
 
 data:
