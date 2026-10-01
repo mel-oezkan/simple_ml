@@ -56,11 +56,8 @@ def classifier_evaluation(
         cfg.batch_size,
     )
 
-    confusion_mat = torch.zeros(
-        (cfg.data.n_classes, cfg.data.n_classes),
-        dtype=torch.long,
-        device=device,
-    )
+    n_classes = cfg.data.n_classes
+    confusion_mat = torch.zeros(n_classes**2, dtype=torch.long, device=device)
     with torch.no_grad():
         for x, y in data_loader_generated:
             x, y = x.to(device), y.to(device)
@@ -68,8 +65,12 @@ def classifier_evaluation(
             pred = model(x)
             pred_classes = torch.argmax(pred, dim=1)
 
-            for i, j in zip(y, pred_classes):
-                confusion_mat[i][j] += 1
+            # flat index and add binary thus no indexing needed
+            confusion_mat += torch.bincount(
+                y.long() * n_classes + pred_classes,
+                minlength=n_classes**2,
+            )
+    confusion_mat = confusion_mat.view(n_classes, n_classes)
 
     # for each class compute the class conditional and the average
     total_correct = 0
