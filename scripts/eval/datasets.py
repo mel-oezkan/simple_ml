@@ -27,7 +27,11 @@ def _validate_generated_samples(
     cfg,
     dataset_path: Path,
 ) -> tuple[int, dict[str, int]]:
-    """Validate the generated layout and return the requested class size."""
+    """Validate the generated layout and return the requested class size.
+    
+    We expect the classes to be generated in dictionaries class_{class_id}.
+    Where each of the generated sampels is saved by its index as the filename.
+    """
     if not dataset_path.exists():
         raise FileNotFoundError(f"Generated dataset not found at {dataset_path}.")
 

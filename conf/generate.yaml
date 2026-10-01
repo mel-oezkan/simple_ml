@@ -1,0 +1,15 @@
+defaults:
+  - sampler: ddpm
+  - _self_
+
+seed: 1
+
+generation:
+  checkpoint_path: runs/4f065c86-4a19-4401-891c-b7094f71ad31/checkpoint.pt
+  samples: 1000
+  batch_size: 128
+  guidance: 2.0
+  preview_count: 20
+
+data:
+  n_classes: 10

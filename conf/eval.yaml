@@ -1,28 +1,21 @@
 batch_size: 128
-seed: 1
 
 eval:
-  generation_batch_size: 128
-  generation_samples: 1000
-  preview_count: 5
+  # Only used to locate the run directory that holds the generations.
   checkpoint_path: runs/4f065c86-4a19-4401-891c-b7094f71ad31/checkpoint.pt
 
   # Classifier features produce a domain-specific Fréchet distance, not standard FID.
   fid_backbone: fashion-mnist_cnn
   classifier: runs/classifier_experiments/models/cnn/C3/best.pt
+  # Accuracy uses a separate MLP so it isn't judged by the FID feature network.
+  accuracy_classifier: runs/classifier_experiments/models/mlp/M2/best.pt
 
   # root: data/imagenet-10k/imagenet_subtrain # data/imagenet-10k/imagenet_subtrain
   # image_dataset: True
 
-  generation_id: 14c767eb-91f3-441e-9972-e7cd3a3a2a3b
-
+  # Generation and sampler settings are read from <run>/<generation_id>/generation_cfg.yaml.
+  generation_id: ??? # pass eval.generation_id=<id> printed by generate_fashion.py
   real_dataset: data/fashion-mnist
-  
-
-generation:
-  samples: 1000
-  batch_size: 128
-  guidance: 2.0
 
 data:
   n_classes: 10

@@ -4,11 +4,14 @@ from pathlib import Path
 
 import hydra
 import torch
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from torchvision.utils import save_image
 from tqdm import tqdm
 
 from vit.model_utils import load_checkpoint
+
+# Written next to the samples; eval reads the generation settings from it.
+GENERATION_CFG_FILE = "generation_cfg.yaml"
 
 
 def save_batch(samples: torch.Tensor, class_dir: Path, batch_index: int) -> None:
@@ -26,14 +29,18 @@ def save_batch(samples: torch.Tensor, class_dir: Path, batch_index: int) -> None
 def generate_samples(cfg, save_dir: Path | None = None) -> None:
     """Generate the samples from the trained model."""
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    save_dir = Path(save_dir or cfg.eval.get("save_dir", "eval_samples"))
+    save_dir = Path(save_dir or cfg.generation.get("save_dir", "eval_samples"))
 
-    max_pending_batches = cfg.eval.get("max_pending_batches", 4)
-    save_workers = cfg.eval.get("save_workers", 2)
+    max_pending_batches = cfg.generation.get("max_pending_batches", 4)
+    save_workers = cfg.generation.get("save_workers", 2)
 
     model, ema, _ = load_checkpoint(cfg, device)
     model.eval()
 
+    sampler = hydra.utils.instantiate(cfg.sampler, model=model)
+
+    # handle the generation and saving via threds
+    # TODO: go though this code again
     pending: deque[Future[None]] = deque()
     with ThreadPoolExecutor(max_workers=save_workers) as save_pool:
         with ema.averaged(model):
@@ -62,8 +69,8 @@ def generate_samples(cfg, save_dir: Path | None = None) -> None:
                         device=device,
                     )
 
-                    denoised_samples = model.sample(
-                        n=labels.shape[0],
+                    denoised_samples = sampler.sample(
+                        n_samples=labels.shape[0],
                         device=torch.device(device),
                         y=labels,
                         guidance_scale=cfg.generation.get("guidance", 1.0),
@@ -89,8 +96,11 @@ def generate_samples(cfg, save_dir: Path | None = None) -> None:
             while pending:
                 pending.popleft().result()
 
+    # Eval reads the settings from here, so results stay tied to the samples.
+    OmegaConf.save(cfg, save_dir / GENERATION_CFG_FILE, resolve=True)
 
-@hydra.main(version_base=None, config_path="../../conf", config_name="eval")
+
+@hydra.main(version_base=None, config_path="../../conf", config_name="generate")
 def main(cfg: DictConfig, save_dir: Path | None = None) -> None:
     """Generate the samples from the trained model."""
     generate_samples(cfg, save_dir)

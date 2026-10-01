@@ -1,0 +1,3 @@
+_target_: vit.diffusion.sampler.DDIMSampler
+eta: 0.0
+n_steps: 50

@@ -3,12 +3,11 @@ import shlex
 from pathlib import Path
 
 import modal
-from nanoid import generate
 
 from modal_apps.images import PROJECT_ROOT, ml_image
 from modal_apps.resources import RUNS_PATH, runs_volume
 from scripts.eval.generate_eval_samples import generate_samples
-from vit.utils.random import set_seed
+from vit.utils.random import get_generationid, set_seed
 
 app = modal.App("diffusion-vit", image=ml_image)
 
@@ -29,19 +28,19 @@ def modal_runner(
     from omegaconf import OmegaConf
 
     with initialize(version_base=None, config_path="conf"):
-        cfg = compose(config_name="eval", overrides=overrides or [])
+        cfg = compose(config_name="generate", overrides=overrides or [])
 
     set_seed(cfg.seed)
 
-    preview_count = cfg.eval.preview_count
+    preview_count = cfg.generation.preview_count
     if preview_count < 0:
         raise ValueError("preview_count must be non-negative")
 
-    configured_checkpoint = Path(cfg.eval.checkpoint_path)
+    configured_checkpoint = Path(cfg.generation.checkpoint_path)
     run_id = configured_checkpoint.parent.name
 
     checkpoint_path = Path(RUNS_PATH) / run_id / configured_checkpoint.name
-    cfg.eval.checkpoint_path = str(checkpoint_path)
+    cfg.generation.checkpoint_path = str(checkpoint_path)
     OmegaConf.update(
         cfg,
         "training.checkpoint_path",
@@ -71,7 +70,7 @@ def modal_runner(
 
 @app.local_entrypoint()
 def cli(overrides: str = ""):
-    generation_id = generate()
+    generation_id = get_generationid()
     volume_path, previews = modal_runner.remote(
         generation_id,
         shlex.split(overrides),
