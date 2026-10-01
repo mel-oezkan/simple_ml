@@ -21,12 +21,12 @@ def batch_time(bs, t, device):
 
 
 class DDPMSampler(nn.Module):
-    def __init__(self, model: Diffusion, image_size: int, out_channels: int):
+    def __init__(self, model: Diffusion):
         super().__init__()
         self.model = model
         self.T = model.T
-        self.image_size = image_size
-        self.out_channels = out_channels
+        self.image_size = model.image_size
+        self.out_channels = model.out_channels
 
     @torch.no_grad()
     def reverse(
@@ -98,16 +98,14 @@ class DDIMSampler(nn.Module):
         model: Diffusion,
         eta: float,
         n_steps: int,
-        image_size: int,
-        out_channels: int,
     ):
         super().__init__()
         self.model = model
         self.eta = eta
         self.n_steps = n_steps
         self.T = model.T
-        self.image_size = image_size
-        self.out_channels = out_channels
+        self.image_size = model.image_size
+        self.out_channels = model.out_channels
 
     @torch.no_grad()
     def reverse(
