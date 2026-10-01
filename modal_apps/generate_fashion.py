@@ -28,19 +28,19 @@ def modal_runner(
     from omegaconf import OmegaConf
 
     with initialize(version_base=None, config_path="conf"):
-        cfg = compose(config_name="eval", overrides=overrides or [])
+        cfg = compose(config_name="generate", overrides=overrides or [])
 
     set_seed(cfg.seed)
 
-    preview_count = cfg.eval.preview_count
+    preview_count = cfg.generation.preview_count
     if preview_count < 0:
         raise ValueError("preview_count must be non-negative")
 
-    configured_checkpoint = Path(cfg.eval.checkpoint_path)
+    configured_checkpoint = Path(cfg.generation.checkpoint_path)
     run_id = configured_checkpoint.parent.name
 
     checkpoint_path = Path(RUNS_PATH) / run_id / configured_checkpoint.name
-    cfg.eval.checkpoint_path = str(checkpoint_path)
+    cfg.generation.checkpoint_path = str(checkpoint_path)
     OmegaConf.update(
         cfg,
         "training.checkpoint_path",
