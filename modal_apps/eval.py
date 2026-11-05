@@ -8,6 +8,8 @@ from modal_apps.resources import RUNS_PATH, runs_volume
 
 app = modal.App("diffusion-vit", image=ml_image)
 
+EVAL_RESULT_FILE = "eval_result.json"
+
 hours = 2
 @app.function(
     gpu="L4",
@@ -27,10 +29,11 @@ def modal_runner(
         cfg = compose(config_name="eval", overrides=cfg_overrides or [])
 
     # handle the problem of defining path as runs/ instead of /runs/
-    configured_classifier = Path(cfg.eval.classifier)
-    cfg.eval.classifier = str(
-        Path(RUNS_PATH) / configured_classifier.relative_to("runs")
-    )
+    for key in ("classifier", "accuracy_classifier"):
+        configured_classifier = Path(cfg.eval[key])
+        cfg.eval[key] = str(
+            Path(RUNS_PATH) / configured_classifier.relative_to("runs")
+        )
 
     # extract the run_id from the checkpoint path, which is expected to be in the form
     # /runs/<run_id>/<checkpoint_name>.pt
@@ -40,15 +43,9 @@ def modal_runner(
     run_dir = Path(RUNS_PATH) / run_id
     new_result: dict = eval_model(cfg, run_dir)
 
-    result_path = run_dir / "result.json"
-    results: list[None] = []
-    if result_path.exists():
-        with open(result_path, "r") as result_file:
-            results: list[dict] = json.load(result_file)
-            
-
-    results.append(new_result)
-    result_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
+    # Store the result next to the samples it scores, one file per generation.
+    result_path = run_dir / cfg.eval.generation_id / EVAL_RESULT_FILE
+    result_path.write_text(json.dumps(new_result, indent=2), encoding="utf-8")
     runs_volume.commit()
 
     return result_path.relative_to(RUNS_PATH).as_posix()

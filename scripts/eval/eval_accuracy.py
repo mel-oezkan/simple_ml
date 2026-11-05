@@ -9,7 +9,7 @@ def eval_classification_accuracy(cfg, generated_dataset: Dataset) -> dict:
     """Compute classifier accuracy for the selected generated samples."""
     acc, cond_acc, confusion_mat = classifier_evaluation(
         cfg,
-        classifier_path=Path(cfg.eval.classifier),
+        classifier_path=Path(cfg.eval.accuracy_classifier),
         generated_dataset=generated_dataset,
     )
 
